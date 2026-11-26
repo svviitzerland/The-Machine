@@ -1,6 +1,8 @@
 """Offline text-to-speech on a worker thread.
 
-Uses Piper if it is installed, then macOS ``say``, then espeak-ng, and otherwise only prints.
+Uses Phonon (a 31M-parameter neural TTS that runs faster than real time on
+one CPU core) when ``ptts`` is installed, then macOS ``say``, then espeak-ng,
+and otherwise only prints.
 """
 from __future__ import annotations
 
@@ -9,65 +11,72 @@ import shutil
 import subprocess
 import sys
 import threading
-from pathlib import Path
 from typing import Callable
+
+from .persona import Persona
 
 
 class Voice:
-    def __init__(self, language: str = "en", piper_voice: Path | None = None,
+    def __init__(self, persona: Persona, model: str = "hf://gradium/phonon-31m-en", quant: str = "q8",
                  on_start: Callable[[], None] | None = None, on_end: Callable[[], None] | None = None,
-                 silent: bool = False):
-        self.language = language
+                 silent: bool = False, language: str = "en"):
+        self.persona, self.language = persona, language
         self.on_start, self.on_end = on_start, on_end
         self.backend = "print"
-        self._piper = None
+        self._tts = None
         if not silent:
-            self._choose(piper_voice)
-        self._q: queue.Queue[str] = queue.Queue()
+            self._choose(model, quant)
+        self._q: queue.Queue[tuple[str, float]] = queue.Queue()
         threading.Thread(target=self._loop, daemon=True, name="voice").start()
 
-    def _choose(self, piper_voice: Path | None) -> None:
-        if piper_voice and Path(piper_voice).exists():
-            try:
-                from piper import PiperVoice  # type: ignore
-                import sounddevice  # noqa: F401
-                self._piper = PiperVoice.load(str(piper_voice))
-                self.backend = "piper"
-                return
-            except Exception as e:
-                print(f"[voice] piper unavailable: {e}", file=sys.stderr)
+    def _choose(self, model: str, quant: str) -> None:
+        try:
+            import ptts
+            import sounddevice  # noqa: F401
+            self._tts = ptts.TTS(model, lang=self.language, quant=quant)
+            self._tts.synth("ready", voice=self.persona.voice)   # loads the voice now, not mid-sentence
+            self.backend = "phonon"
+            return
+        except Exception as e:
+            print(f"[voice] neural voice unavailable ({type(e).__name__}: {e})", file=sys.stderr)
         if sys.platform == "darwin" and shutil.which("say"):
             self.backend = "say"
         elif shutil.which("espeak-ng"):
             self.backend = "espeak-ng"
 
-    def say(self, text: str) -> None:
-        print(f"\033[93m[Machine]\033[0m {text}", flush=True)
+    def say(self, text: str, rate: float = 0.0) -> None:
+        print(f"\033[93m[{self.persona.name}]\033[0m {text}", flush=True)
         if self.backend != "print":
-            self._q.put(text)
+            self._q.put((text, rate))
 
     def _loop(self) -> None:
         while True:
-            text = self._q.get()
+            text, rate = self._q.get()
             if self.on_start:
                 self.on_start()
             try:
-                self._speak(text)
+                self._speak(text, rate)
             except Exception as e:
                 print(f"[voice] {e}", file=sys.stderr)
             finally:
                 if self.on_end:
                     self.on_end()
+                self._q.task_done()
 
-    def _speak(self, text: str) -> None:
-        if self.backend == "piper":
-            import numpy as np
+    def wait(self) -> None:
+        """Block until everything queued has been spoken."""
+        self._q.join()
+
+    def _speak(self, text: str, rate: float) -> None:
+        if self.backend == "phonon":
             import sounddevice as sd
-            chunks = list(self._piper.synthesize(text))
-            audio = np.concatenate([c.audio_float_array for c in chunks])
-            sd.play(audio, chunks[0].sample_rate)
+            self._tts.set_conditions({"duration_delta": rate})
+            audio = self._tts.synth(text, voice=self.persona.voice)
+            sd.play(audio.reshape(-1), self._tts.sample_rate)
             sd.wait()
         elif self.backend == "say":
-            subprocess.run(["say", text], capture_output=True)
+            wpm = int(185 / (1 + rate))          # positive rate means slower, as with duration_delta
+            subprocess.run(["say", "-r", str(wpm), text], capture_output=True)
         elif self.backend == "espeak-ng":
-            subprocess.run(["espeak-ng", "-v", self.language, text], capture_output=True)
+            subprocess.run(["espeak-ng", "-v", self.language, "-s", str(int(165 / (1 + rate))), text],
+                           capture_output=True)

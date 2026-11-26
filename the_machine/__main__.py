@@ -57,16 +57,17 @@ def main(argv: list[str] | None = None) -> None:
 
 def _chat(cfg: C.Config, silent: bool) -> None:
     from .core.mind import Mind
+    from .language.persona import load_persona
     from .language.voice import Voice
     from .memory.store import Store
-    voice = Voice(cfg.mind.language, cfg.speech.piper_voice, silent=silent)
+    voice = Voice(load_persona(cfg.mind.persona), cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent)
     m = Mind(cfg, Store(cfg.memory.db_path), voice.say)
     print("[chat] text-only mode (no camera). Ctrl+D to quit.", file=sys.stderr)
     for line in sys.stdin:
         if line.strip():
             m.hear(line.strip())
             m.tick()
-    time.sleep(0.5)
+    voice.wait()
 
 
 def _status(cfg: C.Config, as_json: bool) -> None:

@@ -110,6 +110,12 @@ Measured on an Apple laptop CPU with `python -m the_machine bench`:
 
 Run `bench` on your own machine to get your numbers.
 
+## Voice and persona
+
+The Machine speaks with [Phonon](https://huggingface.co/gradium/phonon-31m-en), a small neural voice (31M parameters, Apache-2.0) that runs much faster than real time on a laptop CPU. Without it, it falls back to macOS `say` or espeak-ng.
+
+Its persona lives in one file, `the_machine/language/personas/machine.py`. The file sets the voice, the speaking speed, and how each mood sounds. The mood comes from what it is saying and how it feels: it talks faster and says "Ooh." when curious, and slower when tired. To make a new persona, copy that file, pick another voice, and set `MindConfig.persona`.
+
 ## Language
 
 English for now. Each language is one file in `the_machine/language/packs/`. To add one, copy `en.py` and translate it.

@@ -58,7 +58,8 @@ class MindConfig:
     energy_drain: float = 0.00002          # per tick
     sleep_energy: float = 0.15             # below this the Machine asks to sleep
     ask_cooldown_s: float = 25.0           # min time between unsolicited questions
-    language: str = "en"                   # language pack code: the_machine/language/packs/<code>.py
+    language: str = "en"
+    persona: str = "machine"                # the_machine/language/personas/<name>.py                   # language pack code: the_machine/language/packs/<code>.py
 
 
 @dataclass
@@ -71,7 +72,8 @@ class SpeechConfig:
     min_utt_s: float = 0.4
     max_silence_s: float = 0.7
     max_utt_s: float = 8.0                 # transcribe anyway after this, so a noisy room can't block it
-    piper_voice: Path = ROOT / "models" / "en_US-lessac-medium.onnx"
+    tts_model: str = "hf://gradium/phonon-31m-en"
+    tts_quant: str = "q8"
 
 
 @dataclass

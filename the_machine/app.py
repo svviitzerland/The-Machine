@@ -11,6 +11,7 @@ import numpy as np
 from . import config as C
 from .core.mind import Mind
 from .language.pack import STAGE_NAMES
+from .language.persona import load_persona
 from .language.voice import Voice
 from .memory.store import Store
 from .perception import models
@@ -58,7 +59,7 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
     store = Store(cfg.memory.db_path)
     inbox: queue.Queue[str] = queue.Queue()
     ears = None
-    voice = Voice(cfg.mind.language, cfg.speech.piper_voice, silent=silent,
+    voice = Voice(load_persona(cfg.mind.persona), cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent,
                   on_start=lambda: ears and hasattr(ears, "muted") and ears.muted.set(),
                   on_end=lambda: ears and hasattr(ears, "muted") and ears.muted.clear())
     mind = Mind(cfg, store, voice.say, FaceEngine(str(paths["yunet"]), str(paths["sface"]), cfg.vision),

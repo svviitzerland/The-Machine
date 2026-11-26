@@ -185,3 +185,14 @@ def test_sleep_demotes_wrong_self_labels(store):
         store.add_episode("see", modality="face", concept_id=a, vec=x, exemplar=True, source="self")
     rep = Consolidator(store, cfg, mem, lex).sleep()
     assert rep.self_demoted >= 3 and rep.self_verified >= 3
+
+
+def test_persona_moods_change_rate_and_wording():
+    from the_machine.language.persona import load_persona, mood_for
+    p = load_persona("machine")
+    assert mood_for("ask_name", 0.5, 1.0) == "curious"
+    assert mood_for("greet_known", 0.5, 0.1) == "tired"
+    texts = {p.style("Who are you?", "curious", stage=2)[0] for _ in range(50)}
+    assert "Who are you?" in texts and len(texts) > 1
+    assert p.style("Hi", "curious", 2)[1] < p.style("Hi", "tired", 2)[1]
+    assert p.style("Farhan... Farhan!", "happy", 0)[0] == "Farhan... Farhan!"

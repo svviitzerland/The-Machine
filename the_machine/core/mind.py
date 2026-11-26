@@ -13,6 +13,7 @@ import numpy as np
 
 from ..config import Config, MemoryConfig
 from ..language.pack import STAGE_NAMES, Intent, load_pack, stage_of
+from ..language.persona import load_persona, mood_for
 from ..memory.consolidation import Consolidator, SleepReport
 from ..memory.lexicon import Lexicon
 from ..memory.semantic import PrototypeMemory, l2n
@@ -53,9 +54,13 @@ class Mind:
     def __init__(self, cfg: Config, store: Store, say: Callable[[str], None],
                  face_engine=None, object_encoder=None, llm=None, self_training: bool = True):
         self.cfg, self.store, self._say = cfg, store, say
+        # Voice.say takes a speaking rate; plain sinks like print or list.append don't.
+        self._say_rate = getattr(say, "__func__", None) is not None and "rate" in say.__func__.__code__.co_varnames
         self.faces = PrototypeMemory(store, cfg.memory, "face")
         self.objects = PrototypeMemory(store, object_memory_cfg(cfg.memory), "object")
         self.lang = load_pack(cfg.mind.language)
+        self.persona = load_persona(cfg.mind.persona)
+        self.mood = "calm"
         self.lex = Lexicon(store, cfg.memory, self.lang.content_words)
         self.sleeper = Consolidator(store, cfg.memory, self.faces, self.lex)
         self.ethics = Ethics(store)
@@ -82,10 +87,15 @@ class Mind:
         return stage_of(len(self.faces.concepts()) + len(self.objects.concepts()), self.lex.vocabulary_size())
 
     def speak(self, key: str, **kw) -> None:
-        text = self.lang.say(key, self.stage, **kw)
+        stage = self.stage
+        self.mood = mood_for(key, self.drives.curiosity, self.drives.energy)
+        text, rate = self.persona.style(self.lang.say(key, stage, **kw), self.mood, stage)
         self.thought = text
         self.store.add_episode("say", text=text, salience=0.3)
-        self._say(text)
+        if self._say_rate:
+            self._say(text, rate)
+        else:
+            self._say(text)
 
     def name_of(self, cid: int | None) -> str | None:
         if cid is None:
