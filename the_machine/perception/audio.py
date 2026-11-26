@@ -8,6 +8,7 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 from typing import Callable
 
 import numpy as np
@@ -58,23 +59,32 @@ class MicEars:
         buf: list[np.ndarray] = []
         voiced, silence = 0.0, 0.0
         blk = 0.03
+        # Rooms differ a lot, so the speech gate follows the background level:
+        # the 20th percentile of the last ~3 s of loudness. Speech comes in
+        # bursts, so it barely moves that percentile.
+        history: deque[float] = deque(maxlen=100)
         while not self._stop.is_set():
             try:
                 x = self._q.get(timeout=0.2)
             except queue.Empty:
                 continue
             rms = float(np.sqrt(np.mean(x * x)))
-            if rms >= self.cfg.vad_energy:
+            history.append(rms)
+            if len(history) < 30:          # first second: just listen to the room
+                continue
+            floor = float(np.percentile(history, 20))
+            gate = max(self.cfg.vad_energy, floor * self.cfg.vad_ratio)
+            if rms >= gate:
                 buf.append(x)
                 voiced += blk
                 silence = 0.0
             elif buf:
                 buf.append(x)
                 silence += blk
-                if silence >= self.cfg.max_silence_s:
-                    if voiced >= self.cfg.min_utt_s:
-                        self._transcribe(np.concatenate(buf))
-                    buf, voiced, silence = [], 0.0, 0.0
+            if buf and (silence >= self.cfg.max_silence_s or len(buf) * blk >= self.cfg.max_utt_s):
+                if voiced >= self.cfg.min_utt_s:
+                    self._transcribe(np.concatenate(buf))
+                buf, voiced, silence = [], 0.0, 0.0
 
     def _transcribe(self, audio: np.ndarray) -> None:
         segs, _ = self.model.transcribe(audio, language=self.language, beam_size=1, vad_filter=True,

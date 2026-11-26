@@ -66,9 +66,11 @@ class SpeechConfig:
     asr_model: str = "tiny.en"             # English-only models are faster and more accurate
     asr_compute: str = "int8"
     sample_rate: int = 16000
-    vad_energy: float = 0.012              # RMS threshold for the energy VAD
+    vad_energy: float = 0.012              # lowest RMS that can count as speech
+    vad_ratio: float = 2.5                 # speech must be this many times louder than the room
     min_utt_s: float = 0.4
     max_silence_s: float = 0.7
+    max_utt_s: float = 8.0                 # transcribe anyway after this, so a noisy room can't block it
     piper_voice: Path = ROOT / "models" / "en_US-lessac-medium.onnx"
 
 
