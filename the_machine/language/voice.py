@@ -1,7 +1,7 @@
-"""Mouth: offline text-to-speech on a worker thread.
+"""Offline text-to-speech on a worker thread.
 
-Backends, best first: Piper (neural, ONNX, runs on a Pi) → macOS `say`
-→ espeak-ng → print only."""
+Uses Piper if it is installed, then macOS ``say``, then espeak-ng, and otherwise only prints.
+"""
 from __future__ import annotations
 
 import queue

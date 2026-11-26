@@ -1,12 +1,6 @@
-"""CLI:  python -m the_machine <command>
+"""Command line entry point: ``python -m the_machine <command>``.
 
-  run        wake up: camera + ears + voice (default)
-  chat       text-only, no camera (for quick teaching tests of language/facts)
-  sleep      run one consolidation cycle now
-  status     what the Machine knows
-  bench      measure latency / memory / disk on this machine
-  download   fetch model files once (then fully offline)
-  reset      delete the Machine's memory (asks for confirmation)
+``run`` (the default) starts camera, microphone and voice; ``chat`` is text-only with no camera.
 """
 from __future__ import annotations
 

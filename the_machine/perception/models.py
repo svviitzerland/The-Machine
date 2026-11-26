@@ -1,5 +1,4 @@
-"""Model registry + one-time download. After this, the Machine never touches
-the network again (privacy by design)."""
+"""Model registry and one-time download. After that the Machine needs no network access."""
 from __future__ import annotations
 
 import sys

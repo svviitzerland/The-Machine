@@ -1,10 +1,7 @@
-"""Optional local LLM for open conversation (never required).
+"""Optional local LLM (llama.cpp) for replies to anything that isn't a teaching intent.
 
-Only used for utterances that are not teaching intents. It is *grounded*:
-the prompt carries what the Machine actually perceives and knows from its own
-memory, so it talks about its world rather than the internet's. Drop any
-small instruction-tuned GGUF model into ``models/`` (e.g. a ~0.5-1.5B Q4_K_M)
-and install ``the-machine[llm]``.
+It loads the first ``*.gguf`` file in ``models/``. The prompt includes what the Machine sees and
+knows, so replies stay about its own world.
 """
 from __future__ import annotations
 

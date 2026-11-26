@@ -1,24 +1,7 @@
-"""The Mind: one perception-cognition-action cycle, I/O-free so it is testable.
+"""The Mind: perception, the global workspace and the actions that follow from it.
 
-    frame ──► FaceEngine ──► Tracker ──► PrototypeMemory.recognize ──┐
-    text  ──► language pack.parse ─────────────────────────────────────┤ signals
-    drives (curiosity / social / energy) ─────────────────────────────┘
-                                   │
-                         Global Workspace (compete → broadcast)
-                                   │
-              act: speak · learn (one-shot + burst) · ask · sleep
-                                   │
-          Store (SQLite): episodes (hippocampus) · prototypes (cortex) · lexicon · facts
-
-Teaching protocol (all optional, all natural language):
-  "my name is Farhan"            → learn the closest face (few-shot burst)
-  "this is my friend Sam"        → learn the other / unknown face
-  "this is a cup"                → learn the object held in the centre
-  "who am I?" "what is this?"    → test it
-  "yes" / "no, it's a plate"     → reinforce / correct
-  "coffee is a drink"            → learn a declarative fact
-  "go to sleep"                  → consolidate now
-(Phrasing lives in language packs; the core only sees intents.)
+It does no I/O of its own (camera, audio and speech are passed in), so tests can drive it
+with fake faces and plain text.
 """
 from __future__ import annotations
 
@@ -58,7 +41,7 @@ class Pending:
 
 @dataclass
 class Assertion:
-    """The last thing the Machine claimed: target of teacher feedback."""
+    """The Machine's last claim, which a following "yes" or "no" refers to."""
     kind: str
     concept_id: int | None
     word: str | None = None
@@ -94,8 +77,6 @@ class Mind:
         self.thought = "..."
         self.sleeping = False
         self.metrics = {"frames": 0, "embeds": 0, "detect_ms": 0.0, "embed_ms": 0.0}
-
-    # ================================================================ helpers
     @property
     def stage(self) -> int:
         return stage_of(len(self.faces.concepts()) + len(self.objects.concepts()), self.lex.vocabulary_size())
@@ -122,8 +103,6 @@ class Mind:
         """Who is talking: the largest (closest) face in view."""
         v = self.visible()
         return v[0] if v else None
-
-    # ============================================================= perception
     def see(self, frame: np.ndarray, now: float | None = None) -> None:
         now = now or time.time()
         self.frame = frame
@@ -165,18 +144,19 @@ class Mind:
             else:
                 self.ws.post(Signal(0.45 + 0.5 * self.drives.curiosity, "ask_name", f"ask:{t.id}",
                                     {"track": t.id}, "vision", ttl=5.0))
-        # Self-supervised growth: absorb very confident sightings (rate-limited)
+        # Self-training only takes very confident sightings, and rarely, so wrong labels stay
+        # rare enough for sleep to catch.
         if (self.self_training and t.known and r.known and r.concept_id == t.concept_id
                 and r.sim >= r.threshold + 0.15 and r.margin >= 0.15
                 and now - self._last_self_train.get(t.id, 0) > 10):
             self._last_self_train[t.id] = now
             self.faces.learn(e, t.concept_id)
             self.store.add_episode("see", modality="face", concept_id=t.concept_id, vec=e,
-                                   salience=0.4, exemplar=True)
+                                   salience=0.4, exemplar=True, source="self")
         self._remember_track(t, now)
 
     def _remember_track(self, t, now: float, force: bool = False) -> None:
-        """Hippocampal trace of who was seen; unknown faces feed stranger discovery."""
+        """Log a sighting. Unknown faces logged here feed stranger discovery during sleep."""
         if not force and now - self._last_store.get(t.id, 0) < 5:
             return
         m = t.mean_embedding()
@@ -185,14 +165,10 @@ class Mind:
         self._last_store[t.id] = now
         self.store.add_episode("see", modality="face", concept_id=t.concept_id if t.known else None,
                                vec=m, salience=0.6 if t.known else 0.5)
-
-    # ================================================================ hearing
     def hear(self, text: str) -> None:
         self.store.add_episode("hear", text=text, salience=0.6)
         self.drives.interacted()
         self.ws.post(Signal(1.0, "speech", "", {"text": text}, "ears"))
-
-    # ================================================================= tick
     def tick(self) -> Signal | None:
         if self.sleeping:
             return None
@@ -200,7 +176,7 @@ class Mind:
         now = time.time()
         if self.drives.sleepy:
             self.ws.post(Signal(0.6, "sleepy", "sleepy", {}, "drives"))
-        # curiosity about recurring strangers discovered during sleep
+        # ask about recurring strangers that sleep has found
         if self.drives.curiosity > 0.6 and now - self._last_ask > self.cfg.mind.ask_cooldown_s:
             for t in self.visible():
                 c = self.store.concept(t.concept_id) if t.concept_id else None
@@ -209,8 +185,6 @@ class Mind:
                                         {"cid": c["id"], "k": c["seen_count"], "track": t.id}, "drives"))
                     break
         return self.ws.step()
-
-    # ================================================================== act
     def _act(self, s: Signal) -> None:
         now = time.time()
         if s.kind == "greet":
@@ -230,8 +204,6 @@ class Mind:
             self.speak("sleepy")
         elif s.kind == "speech":
             self._understand(s.payload["text"])
-
-    # ======================================================== understanding
     def _understand(self, text: str) -> None:
         it = self.lang.parse(text)
         # a bare answer to "who are you?" is a name
@@ -241,8 +213,6 @@ class Mind:
         self.awaiting = None
         h = getattr(self, f"_on_{it.kind}", None)
         (h or self._on_chat)(it)
-
-    # -- teaching faces --------------------------------------------------
     def _teach_face(self, track, name: str, first_person: bool) -> None:
         name = name.strip().title()
         existing = self.store.find_concept(name, "person")
@@ -258,7 +228,7 @@ class Mind:
         for v in vecs:
             self.faces.learn(v, cid)
             ep.append(self.store.add_episode("learn", modality="face", concept_id=cid, vec=v,
-                                             text=f"name:{name}", salience=1.0, exemplar=True))
+                                             text=f"name:{name}", salience=1.0, exemplar=True, source="teacher"))
         track.concept_id, track.known, track.announced = cid, True, True
         track.votes.clear()
         track.votes[cid] += 5
@@ -300,17 +270,15 @@ class Mind:
                 v = t.embeddings[-1]
                 self.faces.learn(v, p.concept_id)
                 self.store.add_episode("learn", modality="face", concept_id=p.concept_id, vec=v,
-                                       salience=0.9, exemplar=True)
+                                       salience=0.9, exemplar=True, source="teacher")
                 p.absorbed += 1
         elif p.kind == "object" and self.frame is not None and self.obj_enc and self._frame_i % 2 == 0 \
                 and p.absorbed < 8:
             v = self.obj_enc.embed(self.obj_enc.center_crop(self.frame))
             self.objects.learn(v, p.concept_id)
             self.store.add_episode("learn", modality="object", concept_id=p.concept_id, vec=v,
-                                   salience=0.9, exemplar=True)
+                                   salience=0.9, exemplar=True, source="teacher")
             p.absorbed += 1
-
-    # -- testing faces ---------------------------------------------------
     def _on_who_am_i(self, it: Intent) -> None:
         t = self.speaker()
         if t is None:
@@ -336,8 +304,6 @@ class Mind:
         else:
             self.awaiting = ("other", time.time())
             self.speak("ask_name")
-
-    # -- objects ---------------------------------------------------------
     def _object_vec(self) -> np.ndarray | None:
         if self.frame is None or self.obj_enc is None:
             return None
@@ -356,7 +322,7 @@ class Mind:
             or self.store.new_concept("object", word)
         self.objects.learn(v, cid)
         ep = self.store.add_episode("learn", modality="object", concept_id=cid, vec=v, text=f"word:{word}",
-                                    salience=1.0, exemplar=True)
+                                    salience=1.0, exemplar=True, source="teacher")
         self.lex.teach(word, cid)
         self.pending = Pending("object", cid, None, time.time() + 3.0)
         self.last = Assertion("object", cid, word, [v], [ep])
@@ -376,8 +342,6 @@ class Mind:
             self.awaiting = ("object", time.time())
             self.last = Assertion("object", None, None, [v])
             self.speak("obj_unknown")
-
-    # -- feedback ---------------------------------------------------------
     def _on_positive(self, it: Intent) -> None:
         a = self.last
         if a and a.concept_id is not None:
@@ -385,7 +349,7 @@ class Mind:
             for v in a.vecs[-3:]:
                 mem.learn(v, a.concept_id)
                 self.store.add_episode("learn", modality=a.kind, concept_id=a.concept_id, vec=v,
-                                       text="feedback:+", salience=0.8, exemplar=True)
+                                       text="feedback:+", salience=0.8, exemplar=True, source="teacher")
             if a.word:
                 self.lex.reinforce(a.word, a.concept_id, 1.0)
         self.drives.interacted(0.3)
@@ -395,7 +359,8 @@ class Mind:
         a = self.last
         if a and a.concept_id is not None and a.word:
             self.lex.reinforce(a.word, a.concept_id, -2.0)
-        if a and a.episode_ids:      # retract the wrong exemplars; sleep re-estimation removes their influence
+        if a and a.episode_ids:
+            # Retract the wrong exemplars. Their effect on prototypes goes away at the next sleep.
             self.store.many("UPDATE episodes SET exemplar=0, concept_id=NULL WHERE id=?", [(i,) for i in a.episode_ids])
         self.speak("sorry")
 
@@ -409,8 +374,6 @@ class Mind:
                                                       self.speaker())
             if t:
                 self._teach_face(t, word, False)
-
-    # -- self, memory, facts ---------------------------------------------
     def _on_who_are_you(self, it: Intent) -> None:
         self.speak("i_am", me=self.cfg.name)
 
@@ -468,7 +431,7 @@ class Mind:
         self.speak("bye", n=self.name_of(t.concept_id) if t and t.known else "")
 
     def _on_chat(self, it: Intent) -> None:
-        # language exposure: cross-situational learning with whatever is in view
+        # anything said is word-learning evidence for whatever is in view
         in_view = [t.concept_id for t in self.visible() if t.known and t.concept_id]
         self.lex.observe(it.text, in_view)
         if self.llm is not None:
@@ -490,8 +453,6 @@ class Mind:
                 f"I see: {', '.join(p for p in people if p) or 'nobody I know'}. "
                 f"I know: {'; '.join(f'{r[0]} is {r[1]}' for r in facts) or 'little yet'}. "
                 f"Stage: {STAGE_NAMES[self.stage]}.")
-
-    # ================================================================= sleep
     def sleep(self) -> SleepReport:
         self.speak("sleep_start")
         self.sleeping = True

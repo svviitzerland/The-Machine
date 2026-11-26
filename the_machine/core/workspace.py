@@ -1,15 +1,6 @@
-"""Global Workspace: how the Machine "thinks".
+"""Global workspace: posted signals compete each tick and the most salient one is broadcast.
 
-Specialist processes (vision, hearing, memory, drives) run in parallel and
-post *signals* (candidate contents of consciousness), each with a salience.
-Every tick the workspace lets them compete; the single winner is *broadcast*
-to all processes, which react to it (speak, learn, ask, sleep). Losing
-signals fade. This serial bottleneck over parallel specialists is the core of
-Global Workspace Theory (Baars; Dehaene) and gives the Machine a readable
-"stream of consciousness" that we log and measure.
-
-Habituation: content that won recently is suppressed, so the Machine does not
-greet the same face forever, and attention moves on (inhibition of return).
+A key that won recently is damped (habituation), so the Machine doesn't greet the same face over and over.
 """
 from __future__ import annotations
 
@@ -34,7 +25,7 @@ class Signal:
 class Workspace:
     def __init__(self, habituation_s: float = 20.0, ignition: float = 0.25):
         self.habituation_s = habituation_s
-        self.ignition = ignition                      # minimum salience to become conscious
+        self.ignition = ignition                      # minimum effective salience to win
         self._pending: list[Signal] = []
         self._last_win: dict[str, float] = {}
         self._subs: list[Callable[[Signal], None]] = []

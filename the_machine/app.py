@@ -1,6 +1,4 @@
-"""Runtime: wires camera, ears, voice and the Mind, and draws the Machine's
-point of view (Person of Interest style: yellow box = admin, white = known,
-red = unknown, blue = recurring stranger)."""
+"""Main loop that connects camera, microphone, voice and the Mind, and draws the overlay."""
 from __future__ import annotations
 
 import queue
@@ -19,6 +17,7 @@ from .perception import models
 from .perception.audio import make_ears
 from .perception.vision import Camera, FaceEngine, ObjectEncoder
 
+# BGR: yellow admin, white known user, blue stranger, red unknown
 COLORS = {"admin": (0, 215, 255), "user": (235, 235, 235), "stranger": (255, 160, 60), None: (60, 60, 230)}
 
 
@@ -29,7 +28,7 @@ def draw(frame: np.ndarray, mind: Mind, fps: float) -> np.ndarray:
         c = mind.store.concept(t.concept_id) if t.known and t.concept_id else None
         role = c["role"] if c else None
         col = COLORS.get(role, COLORS[None])
-        L = max(10, w // 5)                                  # corner brackets, POI look
+        L = max(10, w // 5)                                  # corner bracket length
         for (px, py, dx, dy) in ((x, y, 1, 1), (x + w, y, -1, 1), (x, y + h, 1, -1), (x + w, y + h, -1, -1)):
             cv2.line(out, (px, py), (px + dx * L, py), col, 2)
             cv2.line(out, (px, py), (px, py + dy * L), col, 2)
@@ -42,7 +41,6 @@ def draw(frame: np.ndarray, mind: Mind, fps: float) -> np.ndarray:
     if mind.pending and mind.pending.kind == "object":
         h, w = out.shape[:2]
         cv2.rectangle(out, (w // 4, h // 4), (3 * w // 4, 3 * h // 4), (0, 215, 255), 1)
-    # HUD
     d = mind.drives
     lines = [f"THE MACHINE  stage:{STAGE_NAMES[mind.stage]}  fps:{fps:.1f}",
              f"curiosity {d.curiosity:.2f}  social {d.social:.2f}  energy {d.energy:.2f}",

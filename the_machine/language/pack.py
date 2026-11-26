@@ -1,11 +1,7 @@
-"""Language packs: everything language-specific lives in one data file.
+"""Language packs: intent patterns, phrases and stopwords for one language.
 
-The cognitive core never sees raw language rules. It sees *intents*
-(``name_me``, ``what_is``...) and asks for *phrases* by key. Adding a language
-= adding ``packs/<code>.py`` that defines ``PACK``; nothing else changes.
-Grounded word meanings (the lexicon) are language-agnostic: a concept can
-own words from many languages, so the Machine can later learn a second
-language by association, the same way it learned the first.
+The core only sees intents and phrase keys, so adding a language means adding a
+``packs/<code>.py`` that defines ``PACK``.
 """
 from __future__ import annotations
 
@@ -50,8 +46,6 @@ class LanguagePack:
             raise ValueError(f"pack {self.code}: unknown intents {unknown}")
         self._compiled = [(k, re.compile(p, re.I)) for k, p in self.intents]
         self._tok = re.compile(self.token)
-
-    # -- understanding ---------------------------------------------------
     def parse(self, text: str) -> Intent:
         t = re.sub(r"\s+", " ", text.strip().strip(".!")).strip()
         for kind, pat in self._compiled:
@@ -66,12 +60,10 @@ class LanguagePack:
 
     def content_words(self, text: str) -> list[str]:
         return [w for w in (t.lower() for t in self._tok.findall(text)) if len(w) > 1 and w not in self.stopwords]
-
-    # -- speaking --------------------------------------------------------
     def say(self, key: str, stage: int = 2, **kw) -> str:
         text = random.choice(self.phrases[key]).format(**kw)
         if stage == 0 and key.startswith(("learned", "greet", "first")):
-            # newborn: echo the salient word, like Chappie's first words
+            # a newborn only echoes the key word
             w = next((str(v) for v in kw.values() if isinstance(v, str) and v), None)
             if w:
                 return f"{w}... {w}!"

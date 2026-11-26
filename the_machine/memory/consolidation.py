@@ -1,23 +1,8 @@
-"""Sleep: offline memory consolidation (Complementary Learning Systems).
+"""Sleep: offline consolidation of episodes into prototype memory.
 
-In Person of Interest, the Machine was wiped every midnight. Ours does the
-opposite: at night (or when its "battery" is low, like Chappie) it replays the
-day's hippocampal episodes into the semantic memory, then lets weak
-episodes fade. One sleep cycle runs these stages:
-
-1. Exemplar selection: keep a bounded, *diverse* rehearsal set per concept
-   (drop the most redundant exemplar first).
-2. Replay & re-estimation: spherical k-means over each concept's exemplars
-   rebuilds its prototypes and similarity statistics. This undoes order
-   effects and the slow drift of online self-training.
-3. Stranger discovery: unlabelled face episodes are clustered; a recurring
-   unknown face becomes a nameless "stranger" concept the Machine will be
-   curious about and ask its teacher to name.
-4. Confusion detection: pairs of different concepts that overlap become
-   questions for the teacher (active learning).
-5. Forgetting: episodic strength = salience·2^(-age/half_life)·(1+rehearsals);
-   weak, non-exemplar episodes are deleted (Ebbinghaus-style decay).
-6. Lexicon decay: unused word associations weaken.
+One cycle verifies self-labelled exemplars, prunes and replays each concept's exemplars to
+rebuild its prototypes, clusters unlabelled faces into strangers, flags confusable concepts,
+and forgets weak episodes.
 """
 from __future__ import annotations
 
@@ -36,6 +21,8 @@ from .store import Store, from_blob
 @dataclass
 class SleepReport:
     concepts_replayed: int = 0
+    self_verified: int = 0
+    self_demoted: int = 0
     prototypes_before: int = 0
     prototypes_after: int = 0
     exemplars_dropped: int = 0
@@ -102,6 +89,7 @@ class Consolidator:
     def sleep(self) -> SleepReport:
         t0 = time.perf_counter()
         rep = SleepReport(prototypes_before=len(self.faces))
+        rep.self_verified, rep.self_demoted = self._verify_self()
         for cid in sorted(self.faces.concepts()):
             rep.exemplars_dropped += self._prune_exemplars(cid)
             rep.concepts_replayed += self._replay(cid)
@@ -118,24 +106,67 @@ class Consolidator:
             f"replayed={rep.concepts_replayed} protos {rep.prototypes_before}->{rep.prototypes_after} "
             f"strangers={rep.strangers_found} forgot={rep.episodes_forgotten}"), salience=0.9)
         return rep
-
-    # ------------------------------------------------------------------
-    def _exemplars(self, cid: int) -> tuple[list[int], np.ndarray]:
-        rows = self.store.q("SELECT id, vec FROM episodes WHERE concept_id=? AND modality=? AND exemplar=1 "
-                            "AND vec IS NOT NULL ORDER BY ts", (cid, self.faces.modality))
+    def _exemplars(self, cid: int, sources: tuple[str, ...] | None = None) -> tuple[list[int], np.ndarray]:
+        sql = ("SELECT id, vec, source FROM episodes WHERE concept_id=? AND modality=? AND exemplar=1 "
+               "AND vec IS NOT NULL")
+        args: list = [cid, self.faces.modality]
+        if sources:
+            sql += f" AND source IN ({','.join('?' * len(sources))})"
+            args += list(sources)
+        rows = self.store.q(sql + " ORDER BY ts", args)
         if not rows:
             return [], np.zeros((0, 0), np.float32)
+        self._src = {r["id"]: r["source"] for r in rows}
         return [r["id"] for r in rows], l2n(np.stack([from_blob(r["vec"], np.float16) for r in rows]))
+
+    def _verify_self(self) -> tuple[int, int]:
+        """Demote self-labelled exemplars that don't clearly match their concept's trusted
+        (teacher or sleep) exemplars, so a wrong self-label can't corrupt the concept."""
+        anchors, owner = [], []
+        for cid in self.faces.concepts():
+            _, A = self._exemplars(cid, ("teacher", "sleep"))
+            if len(A):
+                k = max(1, min(self.cfg.max_protos_per_concept, math.ceil(len(A) / 8)))
+                C, _ = spherical_kmeans(A, k) if len(A) >= k else (A, None)
+                anchors.append(C)
+                owner += [cid] * len(C)
+        if not anchors:
+            return 0, 0
+        A, owner = np.vstack(anchors), np.array(owner)
+        rows = self.store.q("SELECT id, vec, concept_id FROM episodes WHERE source='self' AND exemplar=1 "
+                            "AND modality=? AND vec IS NOT NULL", (self.faces.modality,))
+        demote, ok = [], 0
+        for r in rows:
+            x = l2n(from_blob(r["vec"], np.float16))
+            s = A @ x
+            mine = s[owner == r["concept_id"]]
+            other = s[owner != r["concept_id"]]
+            own = float(mine.max()) if mine.size else -1.0
+            oth = float(other.max()) if other.size else -1.0
+            if own >= self.cfg.tau_known and own - oth >= self.cfg.verify_margin:
+                ok += 1
+            else:
+                demote.append((r["id"],))
+        if demote:   # back to the unlabelled pool, where stranger discovery can pick them up
+            self.store.many("UPDATE episodes SET exemplar=0, concept_id=NULL, consolidated=0, source='sense' "
+                            "WHERE id=?", demote)
+        return ok, len(demote)
 
     def _prune_exemplars(self, cid: int) -> int:
         ids, X = self._exemplars(cid)
         budget = self.cfg.exemplars_per_concept
         drop: list[int] = []
         keep = list(range(len(ids)))
+        src = getattr(self, "_src", {})
         while len(keep) > budget:
             S = X[keep] @ X[keep].T
             np.fill_diagonal(S, -1)
-            worst = int(np.argmax(S.max(1)))          # most redundant exemplar
+            red = S.max(1)
+            # drop the most redundant exemplar, preferring self-labelled over teacher-given ones
+            selfish = np.array([src.get(ids[i]) == "self" for i in keep])
+            if selfish.any():
+                red = np.where(selfish, red, -np.inf)
+            worst = int(np.argmax(red))
             drop.append(ids[keep.pop(worst)])
         if drop:
             self.store.many("UPDATE episodes SET exemplar=0 WHERE id=?", [(i,) for i in drop])
@@ -171,7 +202,7 @@ class Consolidator:
             cid = self.store.new_concept("stranger", None, role="stranger")
             for i in members:
                 self.faces.learn(X[i], cid)
-            self.store.many("UPDATE episodes SET concept_id=?, exemplar=1 WHERE id=?",
+            self.store.many("UPDATE episodes SET concept_id=?, exemplar=1, source='sleep' WHERE id=?",
                             [(cid, rows[i]["id"]) for i in members])
             found += 1
         self.store.x("UPDATE episodes SET consolidated=1 WHERE modality=? AND concept_id IS NULL",

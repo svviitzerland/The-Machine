@@ -1,14 +1,5 @@
-"""Grounded word learning.
-
-Two channels, as in children:
-* explicit ostension : "this is a cup" while the thing is in view
-  gives a strong association (weight ``lex_explicit_weight``);
-* cross-situational statistics: every content word heard while concepts are
-  in view gets a small association split across those concepts. Over many
-  ambiguous scenes the correct mapping wins (Yu & Smith, 2007).
-
-Meaning is read out as P(concept | word) and naming as P(word | concept).
-Teacher feedback ("yes"/"no") reinforces or weakens the last mapping.
+"""Word to concept associations, learned from explicit teaching ("this is a cup") and from
+cross-situational statistics over everything heard while concepts are in view (Yu & Smith, 2007).
 """
 from __future__ import annotations
 
@@ -21,8 +12,7 @@ from .store import Store
 
 class Lexicon:
     def __init__(self, store: Store, cfg: MemoryConfig, content_words: Callable[[str], list[str]]):
-        # tokenisation/stopwords come from the active language pack; the
-        # word->concept table itself is language-agnostic (multilingual-ready)
+        # Tokenising comes from the language pack; the word table itself is language-agnostic.
         self.store, self.cfg, self.content_words = store, cfg, content_words
 
     def _add(self, word: str, cid: int, w: float) -> None:

@@ -1,11 +1,7 @@
-"""Persistent long-term memory on a single SQLite file (WAL mode).
+"""Long-term memory in a single SQLite file (WAL mode).
 
-Why SQLite: zero-server, ~1 MB footprint, crash-safe (ACID), runs on anything
-from a Raspberry Pi to a laptop, and one file = the Machine's whole "self"
-(easy backup, easy to delete -> privacy). Vectors are stored as raw BLOBs
-(float32 prototypes, float16 episodes) and searched in NumPy: for the scale of a
-single household (<1e5 vectors) brute-force cosine on a contiguous matrix is
-faster and simpler than an ANN index.
+Vectors are stored as BLOBs and searched with NumPy. At household scale (under 1e5 vectors)
+brute-force cosine is fast enough and simpler than an ANN index.
 """
 from __future__ import annotations
 
@@ -35,7 +31,7 @@ CREATE TABLE IF NOT EXISTS concepts (
 );
 CREATE INDEX IF NOT EXISTS ix_concepts_name ON concepts(name);
 
--- Semantic memory ("neocortex"): a few prototypes per concept.
+-- Semantic memory: a few prototypes per concept.
 CREATE TABLE IF NOT EXISTS prototypes (
     id          INTEGER PRIMARY KEY,
     concept_id  INTEGER NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
@@ -48,7 +44,7 @@ CREATE TABLE IF NOT EXISTS prototypes (
 );
 CREATE INDEX IF NOT EXISTS ix_protos_modality ON prototypes(modality);
 
--- Episodic memory ("hippocampus"): fast, one-shot, decays unless rehearsed.
+-- Episodic memory: one row per event, decays unless rehearsed.
 CREATE TABLE IF NOT EXISTS episodes (
     id          INTEGER PRIMARY KEY,
     ts          REAL NOT NULL,
@@ -60,6 +56,7 @@ CREATE TABLE IF NOT EXISTS episodes (
     salience    REAL NOT NULL DEFAULT 0.5,
     rehearsals  INTEGER NOT NULL DEFAULT 0,
     exemplar    INTEGER NOT NULL DEFAULT 0, -- kept for rehearsal during sleep
+    source      TEXT NOT NULL DEFAULT 'sense', -- provenance: teacher | self | sleep | sense
     consolidated INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_ep_ts ON episodes(ts);
@@ -87,7 +84,7 @@ CREATE TABLE IF NOT EXISTS facts (
     UNIQUE(subject, relation, object)
 );
 
--- The Machine's sense of self: birth time, age, diary, counters.
+-- Key/value state: birth time, admin, counters.
 CREATE TABLE IF NOT EXISTS self (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL
@@ -110,8 +107,8 @@ def from_blob(b: bytes | None, dtype=np.float32) -> np.ndarray | None:
 
 
 class Store:
-    """Thread-safe thin wrapper. One connection, serialised by a lock: the
-    Machine writes a few rows per second, so contention is irrelevant."""
+    """One SQLite connection guarded by a lock. The Machine writes a few rows per second,
+    so contention doesn't matter."""
 
     def __init__(self, path: Path | str):
         self.path = str(path)
@@ -122,10 +119,12 @@ class Store:
         self._lock = threading.RLock()
         with self._lock:
             self._db.executescript(SCHEMA)
+            cols = {r[1] for r in self._db.execute("PRAGMA table_info(episodes)")}
+            if "source" not in cols:                       # databases from before the source column
+                self._db.execute("ALTER TABLE episodes ADD COLUMN source TEXT NOT NULL DEFAULT 'sense'")
+                self._db.execute("UPDATE episodes SET source='teacher' WHERE kind='learn'")
         if self.get_self("born") is None:
             self.set_self("born", time.time())
-
-    # -- low level ---------------------------------------------------------
     def q(self, sql: str, args: Iterable[Any] = ()) -> list[sqlite3.Row]:
         with self._lock:
             return self._db.execute(sql, tuple(args)).fetchall()
@@ -162,8 +161,6 @@ class Store:
                 return False
 
         return _Tx()
-
-    # -- self --------------------------------------------------------------
     def get_self(self, key: str, default: Any = None) -> Any:
         r = self.q("SELECT value FROM self WHERE key=?", (key,))
         return json.loads(r[0]["value"]) if r else default
@@ -171,8 +168,6 @@ class Store:
     def set_self(self, key: str, value: Any) -> None:
         self.x("INSERT INTO self(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                (key, json.dumps(value)))
-
-    # -- concepts ----------------------------------------------------------
     def new_concept(self, kind: str, name: str | None = None, role: str = "user") -> int:
         now = time.time()
         return self.x("INSERT INTO concepts(kind,name,created,last_seen,role) VALUES(?,?,?,?,?)",
@@ -199,15 +194,14 @@ class Store:
 
     def delete_concept(self, cid: int) -> None:
         self.x("DELETE FROM concepts WHERE id=?", (cid,))
-
-    # -- episodes ----------------------------------------------------------
     def add_episode(self, kind: str, *, modality: str | None = None, concept_id: int | None = None,
                     vec: np.ndarray | None = None, text: str | None = None, salience: float = 0.5,
-                    exemplar: bool = False, ts: float | None = None) -> int:
+                    exemplar: bool = False, ts: float | None = None, source: str = "sense") -> int:
         return self.x(
-            "INSERT INTO episodes(ts,kind,modality,concept_id,vec,text,salience,exemplar) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO episodes(ts,kind,modality,concept_id,vec,text,salience,exemplar,source) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
             (ts or time.time(), kind, modality, concept_id, None if vec is None else f16(vec), text,
-             float(salience), int(exemplar)))
+             float(salience), int(exemplar), source))
 
     def recent_episodes(self, n: int = 20, kinds: tuple[str, ...] | None = None) -> list[sqlite3.Row]:
         if kinds:

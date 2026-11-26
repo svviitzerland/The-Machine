@@ -1,6 +1,7 @@
-"""Measure everything that matters for "runs on minimal hardware":
-latency per stage, memory-search scaling, sleep cost, RAM, disk, storage
-growth. ``--threads 1`` emulates a single weak core."""
+"""Benchmarks for per-stage latency, memory search scaling, sleep cost, RAM and disk.
+
+Each run is repeated with one OpenCV thread to approximate a weak single-core device.
+"""
 from __future__ import annotations
 
 import json
@@ -44,10 +45,18 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
     from .perception import models
     from .perception.vision import FaceEngine, ObjectEncoder
 
-    out: dict = {"requested_threads": threads or "all", "platform": {"machine": platform.machine(), "system": platform.system(),
-                              "processor": platform.processor(), "cpus": os.cpu_count(),
-                              "python": platform.python_version(), "opencv": cv2.__version__,
-                              "cv_threads": cv2.getNumThreads()}}
+    out: dict = {
+        "requested_threads": threads or "all",
+        "platform": {
+            "machine": platform.machine(),
+            "system": platform.system(),
+            "processor": platform.processor(),
+            "cpus": os.cpu_count(),
+            "python": platform.python_version(),
+            "opencv": cv2.__version__,
+            "cv_threads": cv2.getNumThreads(),
+        },
+    }
     r0 = rss_mb()
     paths = models.ensure(cfg.models_dir, quiet=True)
     t0 = time.perf_counter()
@@ -71,7 +80,7 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
     out["rss_after_models_mb"] = round(rss_mb(), 1)
     out["rss_models_delta_mb"] = round(rss_mb() - r0, 1)
 
-    # memory search scaling (prototype count) + storage growth
+    # recognition time and db size as the prototype count grows
     rng = np.random.default_rng(0)
     scale = {}
     for n in (100, 1_000, 10_000, 100_000):
@@ -89,7 +98,7 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
             s.close()
     out["recognize_vs_prototypes"] = scale
 
-    # episodic write throughput + bytes per episode
+    # episode write throughput and bytes per episode
     with tempfile.TemporaryDirectory() as td:
         s = Store(Path(td) / "e.db")
         v = l2n(rng.normal(size=128)).astype(np.float32)
@@ -101,7 +110,7 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
         size = (Path(td) / "e.db").stat().st_size
         out["episode_write"] = {"per_s": round(2000 / dt), "bytes_per_episode": round(size / 2000)}
 
-        # sleep cost: 20 people x 40 exemplars + 500 unlabeled sightings
+        # sleep cost: 20 people x 40 exemplars, plus 500 unlabelled sightings
         mem = PrototypeMemory(s, cfg.memory, "face")
         lex = Lexicon(s, cfg.memory, load_pack("en").content_words)
         centers = l2n(rng.normal(size=(25, 128)))
@@ -120,7 +129,7 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
                                                "protos_after": rep.prototypes_after}
         s.close()
     out["rss_peak_mb"] = round(rss_mb(), 1)
-    # per-frame budget at the configured rate (1 detection + 1/N embeddings per visible face)
+    # per-frame budget: one detection plus 1/N of an embedding per visible face
     det = out["detect_640x480@320"]["median_ms"]
     emb = out.get("align+embed_per_face", {}).get("median_ms", 0)
     out["est_cpu_load_1face_pct"] = round(100 * cfg.vision.fps_limit * (det + emb / cfg.vision.embed_every_n) / 1000, 1)

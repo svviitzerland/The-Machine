@@ -1,7 +1,7 @@
-"""Ears: microphone → voice activity detection → offline ASR (faster-whisper).
+"""Speech input: an energy VAD feeding offline ASR (faster-whisper).
 
-Everything degrades gracefully: no `sounddevice` or no `faster_whisper` →
-the Machine listens to the keyboard instead (type to talk)."""
+Falls back to typed input when there is no microphone or the audio packages are missing.
+"""
 from __future__ import annotations
 
 import queue
@@ -16,7 +16,7 @@ from ..config import SpeechConfig
 
 
 class KeyboardEars:
-    """Fallback: read lines from stdin."""
+    """Reads typed lines from stdin."""
 
     def __init__(self, on_text: Callable[[str], None]):
         self.on_text = on_text
@@ -42,7 +42,7 @@ class MicEars:
         self.cfg, self.on_text, self.language = cfg, on_text, language
         self.model = WhisperModel(cfg.asr_model, device="cpu", compute_type=cfg.asr_compute, cpu_threads=2)
         self._q: queue.Queue[np.ndarray] = queue.Queue()
-        self.muted = threading.Event()          # set while the Machine speaks (no self-hearing)
+        self.muted = threading.Event()          # set while the Machine speaks, so it doesn't hear itself
         self._stop = threading.Event()
         self._sd = sd
         self.stream = sd.InputStream(samplerate=cfg.sample_rate, channels=1, dtype="float32",

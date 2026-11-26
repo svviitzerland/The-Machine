@@ -1,20 +1,7 @@
-"""Harold's rules: the Machine's constitution.
+"""Admin and forgetting rules.
 
-Harold Finch built limits into the Machine; Chappie's maker made him promise
-"no crimes". Ours are about the people it watches, and they are enforced in
-code, not just stated:
-
-1. Nothing leaves the device. After the one-time model download there is no
-   network code path (perception, memory, speech all run locally).
-2. Embeddings, not pictures. Faces are stored as 128-d vectors; images are
-   kept only if the owner turns on ``save_thumbnails``.
-3. One admin. The first person the Machine is taught becomes its admin
-   (the "creator"). Destructive commands (forget a person, wipe memory) only
-   obey the admin, and only while the admin is in view.
-4. Strangers are not catalogued forever. Unnamed strangers decay like any
-   other episodic memory unless the admin names them.
-5. Everyone can ask to be forgotten: the admin executes it, and it is a
-   real delete (row + prototypes + episodes), not a flag.
+The first person the Machine is taught becomes its admin, and only the admin, while in view,
+can make it forget someone. Forgetting is a hard delete of the concept and its episodes.
 """
 from __future__ import annotations
 

@@ -1,19 +1,8 @@
-"""Growing Prototype Memory (GPM): the Machine's semantic memory.
+"""Prototype memory: open-set recognition over frozen embeddings, with no gradient training.
 
-A class-incremental, open-set recogniser that never needs gradient training:
-
-* Embeddings come from a frozen pretrained encoder (SFace for faces).
-* Each concept owns 1..K prototypes (running means on the unit sphere). A new
-  prototype is *grown* only when a labelled sample is far from all of the
-  concept's prototypes (cf. Growing-When-Required networks), so one person can
-  be represented with and without glasses, by day and by night.
-* Each prototype keeps Welford statistics of its members' cosine similarity;
-  the open-set acceptance threshold of that prototype is
-  ``clip(mean - k*std, tau_min, tau_max)``: tight for consistent concepts,
-  looser for variable ones. Anything below threshold is *unknown*.
-* Because old prototypes are never overwritten by other classes' gradients,
-  there is no catastrophic forgetting by construction; drift is bounded by the
-  replay-based re-estimation done during sleep (see consolidation.py).
+Each concept has a few running-mean prototypes, and a new one is added only when a sample is
+far from all of them. Each prototype's threshold comes from the spread of its members'
+similarities, so consistent concepts get tighter thresholds.
 """
 from __future__ import annotations
 
@@ -48,8 +37,6 @@ class PrototypeMemory:
     def __init__(self, store: Store, cfg: MemoryConfig, modality: str):
         self.store, self.cfg, self.modality = store, cfg, modality
         self.reload()
-
-    # -- state -------------------------------------------------------------
     def reload(self) -> None:
         rows = self.store.q("SELECT * FROM prototypes WHERE modality=? ORDER BY id", (self.modality,))
         self.ids = np.array([r["id"] for r in rows], dtype=np.int64)
@@ -73,8 +60,6 @@ class PrototypeMemory:
         t = self.sim_mean - c.spread_k * std
         t = np.where(self.n >= 3, t, c.tau_known)          # not enough evidence yet
         return np.clip(t, c.tau_min, c.tau_max)
-
-    # -- inference ---------------------------------------------------------
     def recognize(self, x: np.ndarray) -> Recognition:
         if len(self) == 0:
             return Recognition(None, 0.0, self.cfg.tau_known, 0.0, False)
@@ -89,8 +74,6 @@ class PrototypeMemory:
 
     def recognize_batch(self, X: np.ndarray) -> list[Recognition]:
         return [self.recognize(x) for x in X]
-
-    # -- learning ----------------------------------------------------------
     def learn(self, x: np.ndarray, concept_id: int) -> int:
         """Absorb one labelled sample. Returns the prototype id that absorbed it."""
         x = l2n(np.asarray(x, np.float32))
@@ -123,7 +106,7 @@ class PrototypeMemory:
 
     def _update(self, j: int, x: np.ndarray, s: float) -> int:
         n = self.n[j] + 1
-        self.mean[j] += (x - self.mean[j]) / n               # running mean of unit vectors
+        self.mean[j] += (x - self.mean[j]) / n
         self.P[j] = l2n(self.mean[j])
         d = s - self.sim_mean[j]                             # Welford on member similarity
         self.sim_mean[j] += d / n

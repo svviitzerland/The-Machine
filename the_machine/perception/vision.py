@@ -1,10 +1,7 @@
-"""Eyes: camera → faces (YuNet) → tracks → embeddings (SFace); plus a cheap
-object encoder for things the teacher holds up to the camera.
+"""Camera, face detection (YuNet), IoU tracking and face embeddings (SFace), plus a small object encoder.
 
-Cost control (the Machine must run on a Raspberry Pi):
-* detection on a downscaled frame (≤320 px), at ≤8 fps;
-* a lightweight IoU tracker, so a face is embedded every N frames per *track*
-  rather than every frame, and identity is decided by voting over the track.
+To stay cheap enough for a Raspberry Pi, detection runs on a downscaled frame and each track is
+embedded only every few frames, with identity decided by voting over the track.
 """
 from __future__ import annotations
 
@@ -84,9 +81,10 @@ class FaceEngine:
 
 
 class ObjectEncoder:
-    """Training-free appearance descriptor (HSV colour histogram + HOG shape).
-    Deliberately tiny (no model file); a CLIP-class ONNX encoder can be
-    dropped in behind the same ``embed`` interface."""
+    """Training-free descriptor: HSV colour histogram plus HOG.
+
+    It needs no model file; a learned encoder can replace it behind the same ``embed`` method.
+    """
 
     @staticmethod
     def hog(g: np.ndarray, cell: int = 8, bins: int = 9) -> np.ndarray:

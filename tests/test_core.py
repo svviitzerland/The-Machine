@@ -1,5 +1,4 @@
-"""Unit + integration tests. Faces are simulated as clusters on the unit
-sphere so tests are deterministic and need no camera."""
+"""Faces are simulated as clusters on the unit sphere, so the tests are deterministic and need no camera."""
 from __future__ import annotations
 
 import time
@@ -127,9 +126,6 @@ def test_sleep_discovers_stranger_and_replays(store):
     rep = Consolidator(store, cfg, mem, lex).sleep()
     assert rep.strangers_found == 1 and rep.concepts_replayed >= 1
     assert mem.recognize(sample(1, 1)[0]).known
-
-
-# ------------------------------------------------------------ integration --
 class FakeFaces:
     """Stands in for YuNet+SFace: each 'frame' is a list of (box, embedding)."""
 
@@ -171,3 +167,21 @@ def test_mind_learns_and_recognises_teacher(tmp_path):
     assert "Farhan" not in said[-1]
     rep = m.sleep()
     assert rep.prototypes_after >= 1
+
+
+def test_sleep_demotes_wrong_self_labels(store):
+    rng = np.random.default_rng(6)
+    cfg = Config().memory
+    mem = PrototypeMemory(store, cfg, "face")
+    lex = Lexicon(store, cfg, EN.content_words)
+    _, sample = identity(rng, spread=0.25)
+    a = store.new_concept("person", "a")
+    for x in sample(0, 10):
+        mem.learn(x, a)
+        store.add_episode("learn", modality="face", concept_id=a, vec=x, exemplar=True, source="teacher")
+    for x in sample(0, 4):          # correct self-labels
+        store.add_episode("see", modality="face", concept_id=a, vec=x, exemplar=True, source="self")
+    for x in sample(2, 4):          # wrong self-labels: another person absorbed into "a"
+        store.add_episode("see", modality="face", concept_id=a, vec=x, exemplar=True, source="self")
+    rep = Consolidator(store, cfg, mem, lex).sleep()
+    assert rep.self_demoted >= 3 and rep.self_verified >= 3

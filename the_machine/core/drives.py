@@ -1,11 +1,7 @@
-"""Homeostatic drives: why the Machine does anything when nobody asks.
+"""Drives that make the Machine act on its own.
 
-* curiosity rises while nothing new happens and is satisfied by novelty
-  (unknown faces, new words, being taught): a count/novelty-based intrinsic
-  motivation, cheap enough for a microcontroller-class budget;
-* social rises while alone and is satisfied by interaction;
-* energy is the Chappie "battery": it drains with wakefulness and is restored
-  by sleep, which is also when memories are consolidated.
+Curiosity grows until something new happens, social grows while nobody is in view,
+and energy drains while awake and is restored by sleep.
 """
 from __future__ import annotations
 
