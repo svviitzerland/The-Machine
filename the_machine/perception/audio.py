@@ -8,6 +8,7 @@ import queue
 import sys
 import threading
 import time
+import types
 from collections import deque
 from typing import Callable
 
@@ -33,10 +34,19 @@ class KeyboardEars:
         pass
 
 
+def skip_pyav() -> None:
+    """faster-whisper imports PyAV only to decode audio files. We give it raw
+    samples, and PyAV's bundled FFmpeg clashes with OpenCV's on macOS
+    (duplicate AVFoundation classes), so a placeholder module is enough."""
+    if "av" not in sys.modules:
+        sys.modules["av"] = types.ModuleType("av")
+
+
 class MicEars:
     """Energy-gated VAD with hangover + faster-whisper int8 on CPU."""
 
     def __init__(self, cfg: SpeechConfig, on_text: Callable[[str], None], language: str | None = "en"):
+        skip_pyav()
         import sounddevice as sd  # noqa: F401  (import errors handled by caller)
         from faster_whisper import WhisperModel
 
@@ -106,7 +116,8 @@ def make_ears(cfg: SpeechConfig, on_text: Callable[[str], None], language: str, 
             KeyboardEars(on_text)
             return ears
         except Exception as e:  # missing optional deps or no mic
-            print(f"[ears] microphone unavailable ({type(e).__name__}: {e}); type to talk", file=sys.stderr)
+            hint = " Run: python -m the_machine download" if "ffline" in str(e) or "ncomplete" in str(e) else ""
+            print(f"[ears] microphone unavailable ({type(e).__name__}); type to talk.{hint}", file=sys.stderr)
     return KeyboardEars(on_text)
 
 

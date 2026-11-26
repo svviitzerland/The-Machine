@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 
@@ -27,6 +28,10 @@ def main(argv: list[str] | None = None) -> None:
         from pathlib import Path
         cfg.memory.db_path = Path(a.db)
 
+    if a.command != "download":
+        # Models are fetched once by `download`; after that the Machine never touches the network.
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
     if a.command == "run":
         from .app import run
         run(cfg, use_mic=not a.no_mic, show=not a.no_window, silent=a.silent)
@@ -36,6 +41,8 @@ def main(argv: list[str] | None = None) -> None:
         from .perception import models
         for k, p in models.ensure(cfg.models_dir).items():
             print(f"{k:6s} {p}  {p.stat().st_size/1e6:.2f} MB")
+        models.ensure_speech(cfg)
+        print("all models ready. The Machine now runs offline.")
     elif a.command == "sleep":
         from .core.mind import Mind
         from .memory.store import Store

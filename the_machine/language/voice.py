@@ -24,10 +24,11 @@ class Voice:
         self.on_start, self.on_end = on_start, on_end
         self.backend = "print"
         self._tts = None
-        if not silent:
-            self._choose(model, quant)
         self._q: queue.Queue[tuple[str, float]] = queue.Queue()
-        threading.Thread(target=self._loop, daemon=True, name="voice").start()
+        # Load the voice on the worker thread so the camera can open right away;
+        # anything said before it is ready waits in the queue.
+        threading.Thread(target=self._loop, args=(None if silent else (model, quant),),
+                         daemon=True, name="voice").start()
 
     def _choose(self, model: str, quant: str) -> None:
         try:
@@ -38,7 +39,8 @@ class Voice:
             self.backend = "phonon"
             return
         except Exception as e:
-            print(f"[voice] neural voice unavailable ({type(e).__name__}: {e})", file=sys.stderr)
+            hint = " (run: python -m the_machine download)" if "ffline" in str(e) or "ncomplete" in str(e) else ""
+            print(f"[voice] neural voice unavailable{hint}: {type(e).__name__}", file=sys.stderr)
         if sys.platform == "darwin" and shutil.which("say"):
             self.backend = "say"
         elif shutil.which("espeak-ng"):
@@ -46,10 +48,11 @@ class Voice:
 
     def say(self, text: str, rate: float = 0.0) -> None:
         print(f"\033[93m[{self.persona.name}]\033[0m {text}", flush=True)
-        if self.backend != "print":
-            self._q.put((text, rate))
+        self._q.put((text, rate))
 
-    def _loop(self) -> None:
+    def _loop(self, load: tuple[str, str] | None) -> None:
+        if load:
+            self._choose(*load)
         while True:
             text, rate = self._q.get()
             if self.on_start:

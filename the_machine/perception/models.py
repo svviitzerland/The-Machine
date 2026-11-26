@@ -48,3 +48,27 @@ def ensure(models_dir: Path, keys: list[str] | None = None, quiet: bool = False)
             tmp.rename(dst)
         out[key] = dst
     return out
+
+
+def ensure_speech(cfg) -> None:
+    """Download the speech models once (Whisper for hearing, Phonon for the voice).
+
+    Both libraries fetch from Hugging Face on first use. Doing it here, with
+    the network allowed, means every later run can stay offline.
+    """
+    try:
+        from .audio import skip_pyav
+        skip_pyav()
+        from faster_whisper import WhisperModel
+        print(f"[models] speech recognition: whisper {cfg.speech.asr_model} ...", file=sys.stderr)
+        WhisperModel(cfg.speech.asr_model, device="cpu", compute_type=cfg.speech.asr_compute)
+    except ImportError:
+        print("[models] skipping whisper (install the 'ears' extra)", file=sys.stderr)
+    try:
+        import ptts
+        from ..language.persona import load_persona
+        voice = load_persona(cfg.mind.persona).voice
+        print(f"[models] voice: phonon with voice {voice} ...", file=sys.stderr)
+        ptts.TTS(cfg.speech.tts_model, lang=cfg.mind.language, quant=cfg.speech.tts_quant).synth("hi", voice=voice)
+    except ImportError:
+        print("[models] skipping phonon (install the 'voice' extra)", file=sys.stderr)

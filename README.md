@@ -34,7 +34,7 @@ Needs Python 3.10 to 3.13.
 git clone https://github.com/svviitzerland/The-Machine.git
 cd The-Machine
 pip install -e ".[ears,voice]"
-python -m the_machine download
+python -m the_machine download   # once: face, speech and voice models
 python -m the_machine run
 ```
 
