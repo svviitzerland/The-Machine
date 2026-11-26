@@ -19,6 +19,7 @@ voice = ["piper-tts>=1.2"]
 # Optional small local LLM for richer dialogue (memory-grounded)
 llm = ["llama-cpp-python>=0.3"]
 dev = ["pytest>=8"]
+eval = ["scikit-learn>=1.4", "scipy>=1.11", "matplotlib>=3.8"]
 all = ["the-machine[ears,voice,llm]"]
 
 [project.scripts]

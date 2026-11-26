@@ -71,9 +71,20 @@ flowchart LR
 1. **See.** It finds faces in the camera and turns each one into a list of numbers.
 2. **Remember.** It compares those numbers with the people it knows. If nothing is close enough, it says it does not know you and asks.
 3. **Think.** Everything it sees and hears competes for attention. The most important thing wins, and it acts on that.
-4. **Sleep.** When its energy runs low, it sleeps. It reviews the day, cleans up its memory, forgets unimportant things, and notices people it keeps seeing but does not know yet.
+4. **Sleep.** When its energy runs low, it sleeps. It reviews the day, checks what it taught itself against what you taught it, throws away what does not fit, forgets unimportant things, and notices people it keeps seeing but does not know yet.
 
 All memory is one file at `data/machine.db`. Delete it and the Machine starts over.
+
+## Evaluation
+
+The `eval/` folder tests the memory on real faces from [LFW](https://vis-www.cs.umass.edu/lfw/), using the same code the Machine runs.
+
+```bash
+pip install -e ".[eval]"
+python eval/embed_lfw.py              # embed LFW with YuNet + SFace
+python eval/embed_lfw.py --degrade    # same, as if seen across a room
+python eval/experiments.py            # 10 seeds, about 2 minutes
+```
 
 ## Commands
 
