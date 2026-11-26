@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below. A paper describing the method is in preparation."
+title: "The Machine: An Offline AI That Learns From You"
+type: software
+authors:
+  - given-names: Farhan
+    family-names: Aulianda
+repository-code: "https://github.com/svviitzerland/The-Machine"
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-11-26

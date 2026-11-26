@@ -1,0 +1,35 @@
+[project]
+name = "the-machine"
+version = "0.1.0"
+description = "An offline AI that sees you, talks to you, and learns from you."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python>=4.9",   # YuNet face detector + SFace recognizer run inside OpenCV DNN
+    "psutil>=5.9",
+]
+
+[project.optional-dependencies]
+# Hearing: microphone + offline speech recognition
+ears = ["sounddevice>=0.4.6", "faster-whisper>=1.0"]
+# Voice: neural offline TTS (falls back to macOS `say` / espeak-ng when absent)
+voice = ["piper-tts>=1.2"]
+# Optional small local LLM for richer dialogue (memory-grounded)
+llm = ["llama-cpp-python>=0.3"]
+dev = ["pytest>=8"]
+all = ["the-machine[ears,voice,llm]"]
+
+[project.scripts]
+machine = "the_machine.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["the_machine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,22 @@
+# environments
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# model weights are downloaded on first run (python -m the_machine download)
+models/*
+!models/.gitkeep
+
+# the Machine's memory is personal data, never commit
+data/*
+!data/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+
+# local evaluation outputs (regenerate with `python -m the_machine bench`)
+eval/results/
+
+.DS_Store
+.claude/settings.local.json
