@@ -64,6 +64,23 @@ class Backend(Protocol):
     def chat(self, messages: list[dict], schema: dict, max_tokens: int) -> str: ...
 
 
+GUIDE = """How to decide:
+- The speaker says who they are, in any words, or just answers with a name after you asked -> learn_my_name.
+- The speaker introduces someone next to them -> learn_other_person. Don't relearn a name you already know.
+- The speaker tells you what the thing they show you is -> learn_object.
+- The speaker tells you something about a person or thing -> remember_fact.
+- Your last reply was a guess and they say it's right -> confirm_last. They say it's wrong and give the right name -> correct_last, nothing else.
+- Questions, feelings and small talk -> no action, just answer from what you know above.
+
+Examples (other people and things, just to show the format):
+"oh hey, Rina here" -> {"actions": [{"do": "learn_my_name", "name": "Rina"}], "reply": "Rina! Hi. I'll remember your face."}
+"and this one's my cousin Dimas" -> {"actions": [{"do": "learn_other_person", "name": "Dimas"}], "reply": "Hello Dimas! Now I know two of you."}
+"check it out, it's a pen" -> {"actions": [{"do": "learn_object", "name": "pen"}], "reply": "A pen. What do you use it for?"}
+"Rina loves tea" -> {"actions": [{"do": "remember_fact", "subject": "Rina", "fact": "loves tea"}], "reply": "Rina loves tea. Got it."}
+"no, that's a spoon" -> {"actions": [{"do": "correct_last", "name": "spoon"}], "reply": "Oh, a spoon. Sorry, I'll fix that."}
+"what can you do?" -> {"actions": [], "reply": "I can see, listen and remember what you teach me. Want to teach me something?\""""
+
+
 def instructions(situation: str) -> str:
     acts = "\n".join(f"- {k}({', '.join(a)}): {d}" for k, (d, a) in ACTIONS.items())
     return f"""{situation}
@@ -74,14 +91,29 @@ Decide what to do and what to say, then answer with JSON only:
 Actions you can take (zero or more):
 {acts}
 
+{GUIDE}
+
 Rules:
 - Only use names, objects and facts that appear above or that the speaker just told you. Never invent them.
+- You are not an assistant. Don't offer help. Talk like a curious being that is learning about the world.
 - If you don't know something, say so honestly and ask to be taught.
-- The reply is spoken aloud: one or two short sentences, natural and in character, no emojis, no lists, no markdown.
+- The reply is spoken aloud: one or two short sentences, no emojis, no lists, no markdown.
 - Don't repeat the same words you used in your last reply."""
 
 
-def parse(raw: str) -> Thought:
+_EMPTY = {"none", "none given", "unknown", "n/a", "null", "?"}
+
+
+# Names the Machine would store must have been said out loud. This stops a small
+# model from writing a guess or an old name into memory.
+_GROUNDED = {"learn_my_name", "learn_other_person", "learn_object", "correct_last", "forget_person"}
+
+
+def _said(value: str, text: str) -> bool:
+    return re.search(r"\b" + re.escape(value.lower()) + r"\b", text.lower()) is not None
+
+
+def parse(raw: str, said: str | None = None) -> Thought:
     m = re.search(r"\{.*\}", raw, re.S)
     data = json.loads(m.group(0) if m else raw)
     actions = []
@@ -89,8 +121,11 @@ def parse(raw: str) -> Thought:
         if isinstance(a, dict) and a.get("do") in ACTIONS:
             need = ACTIONS[a["do"]][1]
             args = {k: str(a[k]).strip() for k in need if str(a.get(k) or "").strip()}
-            if len(args) == len(need):
-                actions.append(Action(a["do"], args))
+            if len(args) < len(need) or any(v.lower() in _EMPTY for v in args.values()):
+                continue
+            if said is not None and a["do"] in _GROUNDED and not _said(args["name"], said):
+                continue
+            actions.append(Action(a["do"], args))
     reply = str(data.get("reply") or "").strip() or None
     return Thought(actions, reply)
 
@@ -115,6 +150,6 @@ class LLMCortex:
                 messages.append({"role": role, "content": content})
             messages.append({"role": "user", "content": text})
             try:
-                done(parse(self.backend.chat(messages, SCHEMA, self.max_tokens)), text)
+                done(parse(self.backend.chat(messages, SCHEMA, self.max_tokens), text), text)
             except Exception:
                 done(None, text)          # the Mind falls back to the language pack

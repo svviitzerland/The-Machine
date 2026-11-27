@@ -96,7 +96,7 @@ def run(path: Path, gpu_layers: int) -> dict:
         raw = backend.chat(messages, SCHEMA, 120)
         ms = (time.perf_counter() - t) * 1e3
         try:
-            th = parse(raw)
+            th = parse(raw, text)
         except Exception:
             rows.append(dict(text=text, ok=False, arg_ok=False, made_up=[], ms=ms, raw=raw, reply=None))
             continue

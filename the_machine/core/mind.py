@@ -501,6 +501,8 @@ class Mind:
                 elif a.name == "remember_fact":
                     self._on_fact(Intent("fact", a.args["subject"], a.args["fact"], said))
                 else:
+                    if a.name == "learn_my_name" and self._is_someone_else(a.args["name"]):
+                        a.name = "learn_other_person"
                     kind, arg = self._ACTION_INTENT[a.name]
                     getattr(self, f"_on_{kind}")(Intent(kind, a.args.get(arg) if arg else None, None, said))
         finally:
@@ -515,6 +517,15 @@ class Mind:
             self._utter(thought.reply, rate)
         if sleep_after:
             self.sleep()
+
+    def _is_someone_else(self, name: str) -> bool:
+        # A known speaker who "gives their name" as something new while another face
+        # is in view is almost always introducing that other person.
+        v = self.visible()
+        if len(v) < 2 or not v[0].known or not v[0].concept_id:
+            return False
+        own = self.store.concept(v[0].concept_id)["name"]
+        return bool(own) and own.lower() != name.lower()
 
     def situation(self) -> str:
         """What the Machine knows right now, written for the language cortex."""
