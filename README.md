@@ -27,6 +27,8 @@ python -m the_machine run
 
 No microphone? Run `python -m the_machine run --no-mic` and type instead.
 
+While it runs, press `m` to see its memory as a map, and `n` to watch its neural network think, layer by layer.
+
 ## How it works
 
 ```mermaid
