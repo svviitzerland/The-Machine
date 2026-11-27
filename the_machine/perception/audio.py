@@ -55,6 +55,8 @@ class MicEars:
         self._q: queue.Queue[np.ndarray] = queue.Queue()
         self.muted = threading.Event()          # set while the Machine speaks, so it doesn't hear itself
         self._stop = threading.Event()
+        self.level = 0.0                        # loudness relative to the speech gate, for the HUD
+        self.hearing = False
         self._sd = sd
         self.stream = sd.InputStream(samplerate=cfg.sample_rate, channels=1, dtype="float32",
                                      blocksize=int(cfg.sample_rate * 0.03), callback=self._cb)
@@ -84,6 +86,8 @@ class MicEars:
                 continue
             floor = float(np.percentile(history, 20))
             gate = max(self.cfg.vad_energy, floor * self.cfg.vad_ratio)
+            self.level = rms / gate
+            self.hearing = bool(buf)
             if rms >= gate:
                 buf.append(x)
                 voiced += blk
