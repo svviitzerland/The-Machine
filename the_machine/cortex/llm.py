@@ -26,6 +26,13 @@ class LlamaBackend:
                                        eos_token=model.token_get_text(self.llm.token_eos()),
                                        bos_token=model.token_get_text(self.llm.token_bos()))
         self._grammars: dict[str, object] = {}
+        self.layers = int(self.llm.metadata.get(f"{self.llm.metadata.get('general.architecture')}.block_count", 0))
+        self.recent = ""                     # the tail of what it is writing, for the brain view
+        try:
+            from .tap import Tap
+            self.tap = Tap(self.llm)
+        except Exception:                    # an older llama.cpp, or another platform: no brain view
+            self.tap = None
         # Free the model before the interpreter tears down Metal, or llama.cpp aborts on exit.
         atexit.register(self.llm.close)
 
@@ -50,6 +57,7 @@ class LlamaBackend:
         for chunk in self._complete(messages, schema, max_tokens, True):
             piece = chunk["choices"][0]["text"]
             raw += piece
+            self.recent = (self.recent + piece)[-300:]
             on_text(piece)
         return raw
 

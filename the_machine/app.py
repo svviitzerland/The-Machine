@@ -10,6 +10,7 @@ import cv2
 
 from . import config as C
 from .core.mind import Mind
+from .brainview import BrainView
 from .hud import Hud
 from .mindview import MindView
 from .cortex.llm import load_cortex
@@ -49,7 +50,8 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
     cam = Camera(cfg.vision)
     hud = Hud()
     mind_view, show_mind = MindView(), False
-    print(f"[machine] awake. voice={voice.backend}. Type or speak. Press m to see its mind, q to stop.",
+    brain_view, show_brain = BrainView(), False
+    print(f"[machine] awake. voice={voice.backend}. Type or speak. Press m for its memory, n for its neural network, q to stop.",
           file=sys.stderr)
     period = 1.0 / cfg.vision.fps_limit
     last, fps = time.time(), 0.0
@@ -72,6 +74,8 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
                 cv2.imshow("THE MACHINE", hud.draw(frame, mind, fps, ears, speaking.is_set()))
                 if show_mind:
                     cv2.imshow("MIND", mind_view.draw(mind))
+                if show_brain:
+                    cv2.imshow("CORTEX", brain_view.draw(mind))
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), 27):
                     break
@@ -79,6 +83,11 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
                     show_mind = not show_mind
                     if not show_mind:
                         cv2.destroyWindow("MIND")
+                if key == ord("n"):
+                    show_brain = not show_brain
+                    if not show_brain:
+                        brain_view.close(mind)
+                        cv2.destroyWindow("CORTEX")
             time.sleep(max(0.0, period - (time.time() - t0)))
     except KeyboardInterrupt:
         pass
