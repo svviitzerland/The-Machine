@@ -6,464 +6,565 @@
 <title>The Machine</title>
 <style>
   :root {
-    --bg: #0e1013; --panel: #15181d; --line: #262b33; --text: #d7dbe0; --dim: #7d8590;
-    --accent: #f5b400; --person: #e6e8eb; --stranger: #5aa0ff; --object: #4fd1c5; --fact: #a78bfa; --word: #6b7280;
+    --bg: #0b0c0e; --card: #15171b; --card-2: #1b1e23; --line: #25292f; --line-2: #31363e;
+    --text: #e4e6e9; --muted: #8b929c; --faint: #5b626c; --accent: #f5b400;
+    --person: #e4e6e9; --stranger: #6aa6ff; --object: #4fd1c5; --fact: #b39cff; --word: #5b626c;
+    --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text); overflow: hidden;
-         font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
-  header { height: 44px; display: flex; align-items: center; gap: 22px; padding: 0 18px; border-bottom: 1px solid var(--line); }
-  .brand { font-weight: 600; letter-spacing: .14em; font-size: 12px; }
-  .tab { cursor: pointer; color: var(--dim); letter-spacing: .08em; font-size: 12px; height: 44px; line-height: 44px;
-         border-bottom: 2px solid transparent; user-select: none; }
-  .tab.on { color: var(--text); border-color: var(--accent); }
-  #status { margin-left: auto; color: var(--dim); font-size: 12px; }
-  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #4b5563; margin-right: 7px; vertical-align: 1px; }
-  .dot.live { background: #3ecf6e; }
-  main { position: absolute; top: 44px; left: 0; right: 0; bottom: 0; }
-  .view { position: absolute; inset: 0; display: none; }
-  .view.on { display: block; }
-  canvas { display: block; width: 100%; height: 100%; cursor: grab; }
-  canvas.dragging { cursor: grabbing; }
-  #tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); padding: 9px 11px;
-         border-radius: 6px; font-size: 12px; max-width: 300px; display: none; z-index: 10; }
-  #tip b { display: block; margin-bottom: 5px; font-size: 13px; }
-  #tip .row { display: flex; justify-content: space-between; gap: 14px; }
-  #tip .k { color: var(--dim); }
-  .bar { position: absolute; left: 18px; right: 18px; display: flex; gap: 8px; align-items: center; z-index: 2; }
-  #netbar { top: 14px; }
-  input { flex: 1; background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 9px 12px;
-          border-radius: 6px; font: inherit; outline: none; }
-  input:focus { border-color: #3a414c; }
-  button { background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 8px 14px;
-           border-radius: 6px; cursor: pointer; font: inherit; }
-  button:hover { border-color: #3a414c; }
-  button.primary { border-color: var(--accent); color: var(--accent); }
-  button.on { background: var(--accent); color: #111; border-color: var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  #tokens { position: absolute; left: 18px; right: 18px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 3px;
-            max-height: 92px; overflow: auto; z-index: 2; }
-  .tok { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 5px; border-radius: 4px; background: var(--panel);
-         border: 1px solid var(--line); cursor: pointer; white-space: pre; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 var(--font); overflow: hidden;
+         -webkit-font-smoothing: antialiased; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+  canvas.grab { cursor: grab; } canvas.grabbing { cursor: grabbing; } canvas.point { cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .float { position: fixed; background: var(--card); border: 1px solid var(--line); border-radius: 14px; z-index: 5; }
+
+  nav { top: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px;
+        padding: 4px; border-radius: 999px; }
+  nav .brand { font-weight: 600; font-size: 13px; letter-spacing: .02em; padding: 0 12px 0 10px; display: flex;
+               align-items: center; gap: 8px; color: var(--text); }
+  nav .live { width: 7px; height: 7px; border-radius: 50%; background: #34d27b; }
+  nav button { border: 0; background: transparent; color: var(--muted); font: 500 13px var(--font); padding: 7px 14px;
+               border-radius: 999px; cursor: pointer; }
+  nav button:hover { color: var(--text); }
+  nav button[aria-selected="true"] { background: var(--card-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+  .zoom { right: 16px; bottom: 16px; display: flex; flex-direction: column; padding: 4px; border-radius: 12px; }
+  .zoom button { width: 32px; height: 32px; border: 0; background: transparent; color: var(--muted); border-radius: 8px;
+                 font: 16px var(--font); cursor: pointer; }
+  .zoom button:hover { background: var(--card-2); color: var(--text); }
+
+  #tip { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 20; min-width: 180px; max-width: 300px;
+         padding: 10px 12px; border-radius: 10px; background: var(--card-2); border: 1px solid var(--line-2);
+         font-size: 12.5px; will-change: transform; }
+  #tip h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  #tip .sub { color: var(--muted); margin: -4px 0 8px; font-size: 12px; }
+  #tip dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; }
+  #tip dt { color: var(--muted); } #tip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .legend { left: 16px; bottom: 16px; display: flex; gap: 14px; padding: 9px 14px; font-size: 12px; color: var(--muted); border-radius: 12px; }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+
+  .empty { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); pointer-events: none; z-index: 1;
+           font-size: 14px; text-align: center; }
+
+  /* network composer */
+  .composer { left: 50%; bottom: 16px; transform: translateX(-50%); width: min(820px, calc(100vw - 120px)); padding: 10px;
+              border-radius: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .tokens { display: flex; gap: 4px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; }
+  .tok { flex: none; font: 12px var(--mono); padding: 3px 6px 5px; border-radius: 6px; background: var(--card-2); color: var(--muted);
+         cursor: pointer; white-space: pre; position: relative; border: 1px solid transparent; }
+  .tok::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: 2px; height: 2px; border-radius: 2px;
+                background: var(--muted); opacity: var(--a, .2); }
+  .tok.said { color: var(--text); }
+  .tok.special { color: var(--faint); }
   .tok.reply { color: var(--accent); }
-  .tok.special { color: var(--dim); }
-  .tok.sel { background: var(--accent); color: #111; border-color: var(--accent); }
-  #reply { position: absolute; left: 18px; right: 520px; bottom: 112px; color: var(--dim); z-index: 2;
-           font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hint { position: absolute; right: 18px; color: var(--dim); font-size: 12px; z-index: 2; pointer-events: none; }
-  #legend { position: absolute; left: 18px; bottom: 14px; color: var(--dim); font-size: 12px; display: flex; gap: 14px; z-index: 2; }
-  #legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
-  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--dim);
-           pointer-events: none; }
+  .tok.sel { border-color: var(--accent); background: #2a2410; }
+  .thought { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; padding: 0 4px; font-size: 13px; color: var(--muted); }
+  .thought .act { font: 12px var(--mono); color: var(--accent); background: #2a2410; padding: 1px 7px; border-radius: 6px; }
+  .thought .say { color: var(--text); }
+  .row { display: flex; gap: 8px; }
+  .row input { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 10px;
+               padding: 10px 12px; font: 14px var(--font); outline: none; }
+  .row input:focus { border-color: var(--line-2); }
+  .btn { border: 1px solid var(--line-2); background: var(--card-2); color: var(--text); border-radius: 10px; padding: 0 14px;
+         font: 500 13px var(--font); cursor: pointer; white-space: nowrap; }
+  .btn:hover { border-color: var(--faint); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #141100; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.on { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .5; cursor: default; filter: none; }
+  .note { font-size: 12.5px; color: var(--muted); padding: 0 4px; }
 </style>
 </head>
 <body>
-<header>
-  <span class="brand">THE MACHINE</span>
-  <span class="tab on" data-view="memory">MEMORY</span>
-  <span class="tab" data-view="network">NEURAL NETWORK</span>
-  <span id="status"></span>
-</header>
-<main>
-  <section class="view on" id="memory">
-    <canvas id="mc"></canvas>
-    <div class="hint" style="top:14px">scroll to zoom · drag to move · hover for details</div>
-    <div id="legend"></div>
-  </section>
-  <section class="view" id="network">
-    <div class="bar" id="netbar">
-      <input id="say" placeholder="Say something to it and watch how it thinks" autocomplete="off">
-      <button class="primary" id="go">Think</button>
-      <button id="play" disabled>Play</button>
-      <button id="livebtn" style="display:none">Live</button>
-    </div>
-    <div class="hint" style="bottom:112px">scroll to zoom · drag to move · hover a neuron · ← → step through tokens · double-click to reset</div>
-    <canvas id="nc"></canvas>
-    <div id="empty"></div>
-    <div id="reply"></div>
-    <div id="tokens"></div>
-  </section>
-</main>
-<div id="tip"></div>
+<canvas id="canvas" class="grab"></canvas>
+
+<nav class="float" role="tablist">
+  <span class="brand"><span class="live" id="live" hidden title="awake"></span>The Machine</span>
+  <button role="tab" data-view="memory" aria-selected="true">Memory</button>
+  <button role="tab" data-view="network" aria-selected="false">Network</button>
+</nav>
+
+<div class="float zoom">
+  <button id="zin" title="Zoom in">+</button>
+  <button id="zout" title="Zoom out">−</button>
+  <button id="zfit" title="Fit to screen">⤢</button>
+</div>
+
+<div class="float legend" id="legend"></div>
+
+<div class="float composer" id="composer" hidden>
+  <div class="tokens" id="tokens" hidden></div>
+  <div class="thought" id="thought" hidden></div>
+  <div class="note" id="note" hidden></div>
+  <div class="row">
+    <button class="btn" id="play" hidden>Play</button>
+    <input id="say" placeholder="Say something and watch it think" autocomplete="off" spellcheck="false">
+    <button class="btn" id="livebtn" hidden>Live</button>
+    <button class="btn primary" id="go">Think</button>
+  </div>
+</div>
+
+<div class="empty" id="empty" hidden></div>
+<div id="tip" hidden></div>
+
 <script type="module">
 const $ = s => document.querySelector(s);
-const COLORS = { self: '#ffffff', maker: getVar('--accent'), person: getVar('--person'), stranger: getVar('--stranger'),
-                 object: getVar('--object'), fact: getVar('--fact'), word: getVar('--word') };
-function getVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
-const tip = $('#tip');
-let brainInfo = null, memLive = false;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const C = { self: '#ffffff', maker: css('--accent'), person: css('--person'), stranger: css('--stranger'),
+            object: css('--object'), fact: css('--fact'), word: css('--word'), line: css('--line'),
+            line2: css('--line-2'), muted: css('--muted'), faint: css('--faint'), accent: css('--accent') };
+const KIND = { maker: 'made it', person: 'person', stranger: 'face without a name', object: 'thing', fact: 'fact', word: 'word' };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
-function showTip(x, y, html) {
-  tip.innerHTML = html; tip.style.display = 'block';
-  const w = tip.offsetWidth, h = tip.offsetHeight;
-  tip.style.left = Math.min(x + 14, innerWidth - w - 8) + 'px';
-  tip.style.top = Math.min(y + 14, innerHeight - h - 8) + 'px';
-}
-function hideTip() { tip.style.display = 'none'; }
-function rows(obj) {
-  return Object.entries(obj).map(([k, v]) => `<div class="row"><span class="k">${esc(k)}</span><span>${esc(String(v))}</span></div>`).join('');
-}
-function esc(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]); }
+/* ---------- canvas, camera, render loop ---------- */
+const canvas = $('#canvas'), ctx = canvas.getContext('2d');
+let W = 0, H = 0, view = 'memory', dirty = true;
+const cams = { memory: { x: 0, y: 0, k: 1 }, network: { x: 0, y: 0, k: 1 } };
+const cam = () => cams[view];
+const sx = x => x * cam().k + cam().x, sy = y => y * cam().k + cam().y;
+const wx = x => (x - cam().x) / cam().k, wy = y => (y - cam().y) / cam().k;
+const redraw = () => { dirty = true; };
 
-// a canvas with zoom and pan; draw() paints in screen space using cam.sx / cam.sy
-function setup(canvas, draw) {
-  const cam = { x: 0, y: 0, k: 1, w: 0, h: 0, drag: null };
-  const ctx = canvas.getContext('2d');
-  cam.sx = x => x * cam.k + cam.x;
-  cam.sy = y => y * cam.k + cam.y;
-  cam.wx = x => (x - cam.x) / cam.k;
-  cam.wy = y => (y - cam.y) / cam.k;
-  function resize() {
-    const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1;
-    if (!r.width) return;
-    cam.w = r.width; cam.h = r.height;
-    canvas.width = r.width * d; canvas.height = r.height * d;
-    ctx.setTransform(d, 0, 0, d, 0, 0);
-    draw();
+function resize() {
+  const d = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * d; canvas.height = H * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  redraw();
+}
+addEventListener('resize', resize);
+
+function zoomAt(f, mx = W / 2, my = H / 2) {
+  const c = cam(), px = wx(mx), py = wy(my);
+  c.k = Math.min(14, Math.max(0.1, c.k * f));
+  c.x = mx - px * c.k; c.y = my - py * c.k;
+  redraw();
+}
+canvas.addEventListener('wheel', e => { e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0018), e.clientX, e.clientY); },
+                        { passive: false });
+$('#zin').onclick = () => zoomAt(1.3);
+$('#zout').onclick = () => zoomAt(1 / 1.3);
+$('#zfit').onclick = () => fit();
+function fit() { (view === 'memory' ? fitMemory : fitNet)(); redraw(); }
+
+function loop() {
+  const moving = view === 'memory' ? stepMemory() : false;
+  if (dirty || moving || (view === 'memory' && M.active.size)) {
+    dirty = false;
+    ctx.clearRect(0, 0, W, H);
+    view === 'memory' ? drawMemory() : drawNet();
   }
-  new ResizeObserver(resize).observe(canvas);
-  canvas.addEventListener('wheel', e => {
-    e.preventDefault();
-    const r = canvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-    const wx = cam.wx(mx), wy = cam.wy(my);
-    cam.k = Math.min(12, Math.max(0.15, cam.k * Math.exp(-e.deltaY * 0.0016)));
-    cam.x = mx - wx * cam.k; cam.y = my - wy * cam.k;
-    draw();
-  }, { passive: false });
-  cam.ctx = ctx;
-  return cam;
+  requestAnimationFrame(loop);
+}
+
+/* ---------- tooltip ---------- */
+const tip = $('#tip');
+function showTip(x, y, html) {
+  if (tip.dataset.html !== html) { tip.innerHTML = html; tip.dataset.html = html; }
+  tip.hidden = false;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  const tx = x + 16 + w > W ? x - w - 12 : x + 16, ty = Math.min(y + 16, H - h - 8);
+  tip.style.transform = `translate(${tx}px, ${ty}px)`;
+}
+function hideTip() { tip.hidden = true; }
+const dl = obj => '<dl>' + Object.entries(obj).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl>';
+
+/* ---------- pointer: pan, drag, hover, click ---------- */
+let press = null;
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  const hit = view === 'memory' ? nodeAt(e.clientX, e.clientY) : null;
+  press = { x: e.clientX, y: e.clientY, last: [e.clientX, e.clientY], node: hit, moved: false };
+  canvas.className = 'grabbing';
+});
+canvas.addEventListener('pointermove', e => {
+  if (press) {
+    const dx = e.clientX - press.last[0], dy = e.clientY - press.last[1];
+    press.last = [e.clientX, e.clientY];
+    if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) press.moved = true;
+    if (!press.moved) return;
+    if (press.node && press.node.id !== 'self') {
+      press.node.x = wx(e.clientX); press.node.y = wy(e.clientY); press.node.pinned = true; M.heat = Math.max(M.heat, .25);
+    } else if (!press.node) { cam().x += dx; cam().y += dy; }
+    redraw();
+    if (press.node) hover(e.clientX, e.clientY);
+    return;
+  }
+  hover(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointerup', e => {
+  const p = press; press = null;
+  canvas.className = 'grab';
+  if (p && !p.moved && view === 'memory') M.focus = p.node && M.focus !== p.node ? p.node : null;
+  hover(e.clientX, e.clientY);
+  redraw();
+});
+canvas.addEventListener('pointerleave', () => { if (!press) { setHover(null); hideTip(); } });
+canvas.addEventListener('dblclick', () => fit());
+
+function hover(x, y) {
+  if (view === 'memory') {
+    const n = nodeAt(x, y);
+    setHover(n);
+    canvas.className = press ? 'grabbing' : n ? 'point' : 'grab';
+    n ? showTip(x, y, nodeTip(n)) : hideTip();
+  } else {
+    const n = neuronAt(x, y);
+    setHover(n);
+    n ? showTip(x, y, neuronTip(n)) : hideTip();
+  }
+}
+let hovered = null;
+function setHover(h) {
+  const same = h === hovered || (h && hovered && h.i === hovered.i && h.j === hovered.j && h.i !== undefined);
+  if (!same) { hovered = h; redraw(); }
 }
 
 /* ---------- memory ---------- */
-const mc = $('#mc');
-const M = { nodes: [], edges: [], by: {}, active: new Set(), hover: null, heat: 1 };
-const mcam = setup(mc, drawMemory);
-let fitted = false;
+const M = { nodes: [], edges: [], by: {}, adj: new Map(), active: new Set(), heat: 0, focus: null, fitted: false };
+const radius = n => (3 + 2.4 * n.size) * Math.min(1.6, Math.sqrt(cams.memory.k));
 
-$('#legend').innerHTML = [['maker', 'made it'], ['person', 'person'], ['stranger', 'face without a name'],
-  ['object', 'thing'], ['fact', 'fact'], ['word', 'word']]
-  .map(([k, t]) => `<span><i style="background:${COLORS[k]}"></i>${t}</span>`).join('');
+$('#legend').innerHTML = Object.entries(KIND).map(([k, t]) => `<span><i style="background:${C[k]}"></i>${t}</span>`).join('');
 
 async function loadMemory() {
-  try {
-    const d = await (await fetch('/api/memory')).json();
-    memLive = d.live;
-    const old = M.by, by = {};
-    for (const n of d.nodes) {
-      const o = old[n.id];
-      if (o) { Object.assign(o, n); by[n.id] = o; continue; }
-      by[n.id] = Object.assign(n, { x: 0, y: 0, vx: 0, vy: 0, fixed: false, fresh: true });
-    }
-    const edges = d.edges.filter(([a, b]) => by[a] && by[b]).map(([a, b, w]) => ({ a: by[a], b: by[b], w }));
-    for (const e of edges) if (e.b.fresh) {
-      e.b.x = e.a.x + (Math.random() - .5) * 80; e.b.y = e.a.y + (Math.random() - .5) * 80; e.b.fresh = false;
-    }
-    if (by.self) { by.self.x = 0; by.self.y = 0; by.self.fixed = true; }
-    const changed = d.nodes.length !== M.nodes.length || edges.length !== M.edges.length;
-    M.nodes = d.nodes.map(n => by[n.id]); M.edges = edges; M.by = by; M.active = new Set(d.active);
-    if (changed) M.heat = 1;
-    status();
-  } catch (e) { /* the page stays as it was */ }
+  let d;
+  try { d = await (await fetch('/api/memory')).json(); } catch { return; }
+  $('#live').hidden = !d.live;
+  const by = {};
+  for (const n of d.nodes) {
+    const o = M.by[n.id];
+    by[n.id] = o ? Object.assign(o, n) : Object.assign(n, { x: NaN, y: NaN, vx: 0, vy: 0 });
+  }
+  const edges = d.edges.filter(([a, b]) => by[a] && by[b]).map(([a, b, w]) => ({ a: by[a], b: by[b], w }));
+  const adj = new Map(d.nodes.map(n => [by[n.id], new Set()]));
+  for (const e of edges) { adj.get(e.a).add(e.b); adj.get(e.b).add(e.a); }
+  let added = 0;
+  for (const e of edges) if (isNaN(e.b.x)) {
+    const a = isNaN(e.a.x) ? { x: 0, y: 0 } : e.a, ang = Math.random() * 6.28;
+    e.b.x = a.x + Math.cos(ang) * 60; e.b.y = a.y + Math.sin(ang) * 60; added++;
+  }
+  if (by.self) { by.self.x = 0; by.self.y = 0; by.self.pinned = true; }
+  for (const n of Object.values(by)) if (isNaN(n.x)) { n.x = (Math.random() - .5) * 200; n.y = (Math.random() - .5) * 200; }
+  M.nodes = d.nodes.map(n => by[n.id]); M.edges = edges; M.by = by; M.adj = adj; M.active = new Set(d.active);
+  if (added || edges.length !== M.edgeCount) M.heat = 1;
+  M.edgeCount = edges.length;
+  if (!M.fitted) { for (let i = 0; i < 300 && stepMemory(); i++); fitMemory(); M.fitted = true; }
+  $('#empty').hidden = view !== 'memory' || M.nodes.length > 1;
+  $('#empty').textContent = 'Nothing learned yet. Show it a face or a thing and tell it what it is.';
+  redraw();
 }
 
-function simulate() {
-  const N = M.nodes, E = M.edges;
-  if (M.heat < 0.002 || !N.length) return false;
-  for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
-    const a = N[i], b = N[j]; let dx = b.x - a.x, dy = b.y - a.y; const d2 = dx * dx + dy * dy + 30;
-    const f = 2600 / d2; const d = Math.sqrt(d2); dx /= d; dy /= d;
-    a.vx -= dx * f; a.vy -= dy * f; b.vx += dx * f; b.vy += dy * f;
+function stepMemory() {
+  const N = M.nodes, n = N.length;
+  if (M.heat < 0.004 || n < 2) return false;
+  for (let i = 0; i < n; i++) {
+    const a = N[i];
+    for (let j = i + 1; j < n; j++) {
+      const b = N[j]; let dx = b.x - a.x, dy = b.y - a.y; const d2 = dx * dx + dy * dy + 40;
+      if (d2 > 160000) continue;
+      const f = 2400 / d2, inv = 1 / Math.sqrt(d2); dx *= inv * f; dy *= inv * f;
+      a.vx -= dx; a.vy -= dy; b.vx += dx; b.vy += dy;
+    }
   }
-  for (const e of E) {
-    const rest = e.a.id === 'self' ? 150 : 70;
-    let dx = e.b.x - e.a.x, dy = e.b.y - e.a.y; const d = Math.sqrt(dx * dx + dy * dy) + .01;
-    const f = (d - rest) * 0.03 * (0.5 + e.w); dx /= d; dy /= d;
-    e.a.vx += dx * f; e.a.vy += dy * f; e.b.vx -= dx * f; e.b.vy -= dy * f;
+  for (const e of M.edges) {
+    const rest = e.a.id === 'self' ? 140 : 64;
+    let dx = e.b.x - e.a.x, dy = e.b.y - e.a.y; const d = Math.hypot(dx, dy) + .01;
+    const f = (d - rest) * 0.04 * (0.5 + e.w) / d; dx *= f; dy *= f;
+    e.a.vx += dx; e.a.vy += dy; e.b.vx -= dx; e.b.vy -= dy;
   }
-  for (const n of N) {
-    if (n.fixed) { n.vx = n.vy = 0; continue; }
-    n.vx = (n.vx - n.x * 0.003) * 0.6 * M.heat; n.vy = (n.vy - n.y * 0.003) * 0.6 * M.heat;
-    n.x += Math.max(-30, Math.min(30, n.vx)); n.y += Math.max(-30, Math.min(30, n.vy));
+  for (const p of N) {
+    if (p.pinned || p === press?.node) { p.vx = p.vy = 0; continue; }
+    p.vx = (p.vx - p.x * 0.002) * 0.55; p.vy = (p.vy - p.y * 0.002) * 0.55;
+    p.x += Math.max(-24, Math.min(24, p.vx * M.heat)); p.y += Math.max(-24, Math.min(24, p.vy * M.heat));
   }
-  M.heat *= 0.985;
+  M.heat *= 0.98;
   return true;
 }
 
 function fitMemory() {
-  if (!M.nodes.length || !mcam.w) return;
+  if (!M.nodes.length) return;
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const n of M.nodes) { x0 = Math.min(x0, n.x); x1 = Math.max(x1, n.x); y0 = Math.min(y0, n.y); y1 = Math.max(y1, n.y); }
-  const k = Math.min(2, 0.8 * Math.min(mcam.w / (x1 - x0 + 80), mcam.h / (y1 - y0 + 80)));
-  mcam.k = k; mcam.x = mcam.w / 2 - (x0 + x1) / 2 * k; mcam.y = mcam.h / 2 - (y0 + y1) / 2 * k;
+  const c = cams.memory, k = Math.min(2.2, Math.min((W - 160) / (x1 - x0 + 1), (H - 200) / (y1 - y0 + 1)));
+  c.k = k; c.x = W / 2 - (x0 + x1) / 2 * k; c.y = H / 2 + 10 - (y0 + y1) / 2 * k;
 }
 
-function neighbors(n) {
-  const s = new Set([n]);
-  for (const e of M.edges) { if (e.a === n) s.add(e.b); if (e.b === n) s.add(e.a); }
-  return s;
-}
-
-function drawMemory() {
-  const c = mcam.ctx, k = mcam.k, t = performance.now() / 1000;
-  c.clearRect(0, 0, mcam.w, mcam.h);
-  const near = M.hover ? neighbors(M.hover) : null;
-  c.lineWidth = 1;
-  for (const e of M.edges) {
-    const hot = near && near.has(e.a) && near.has(e.b);
-    c.strokeStyle = hot ? COLORS.maker : near ? '#1b1f25' : '#2c323b';
-    c.beginPath(); c.moveTo(mcam.sx(e.a.x), mcam.sy(e.a.y)); c.lineTo(mcam.sx(e.b.x), mcam.sy(e.b.y)); c.stroke();
-  }
+function nodeAt(x, y) {
+  let best = null, bd = Infinity;
   for (const n of M.nodes) {
-    const x = mcam.sx(n.x), y = mcam.sy(n.y), r = (2.5 + 2.6 * n.size) * Math.sqrt(k);
-    const dim = near && !near.has(n);
-    c.globalAlpha = dim ? 0.25 : 1;
-    c.fillStyle = COLORS[n.kind] || COLORS.object;
-    c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
-    if (n.kind === 'self') { c.strokeStyle = '#fff'; c.beginPath(); c.arc(x, y, r + 4, 0, 7); c.stroke(); }
-    if (M.active.has(n.id)) {
-      c.strokeStyle = COLORS.maker; c.lineWidth = 1.5;
-      c.beginPath(); c.arc(x, y, r + 5 + 3 * Math.sin(t * 4), 0, 7); c.stroke(); c.lineWidth = 1;
-    }
-    const label = n.kind !== 'word' || k > 1.3 || (near && near.has(n));
-    if (label) {
-      c.fillStyle = n === M.hover ? '#fff' : dim ? '#4b5563' : '#aab1ba';
-      c.font = `${n.kind === 'self' ? 600 : 400} ${n.kind === 'self' ? 13 : 11}px -apple-system, system-ui, sans-serif`;
-      c.fillText(n.kind === 'self' ? n.label.toUpperCase() : n.label, x + r + 5, y + 4);
-    }
-  }
-  c.globalAlpha = 1;
-}
-
-function nodeAt(mx, my) {
-  let best = null, bd = 1e9;
-  for (const n of M.nodes) {
-    const r = (2.5 + 2.6 * n.size) * Math.sqrt(mcam.k) + 5;
-    const d = Math.hypot(mcam.sx(n.x) - mx, mcam.sy(n.y) - my);
-    if (d < r && d < bd) { best = n; bd = d; }
+    const d = Math.hypot(sx(n.x) - x, sy(n.y) - y);
+    if (d < Math.max(10, radius(n) + 6) && d < bd) { best = n; bd = d; }
   }
   return best;
 }
 
-(function memoryMouse() {
-  let drag = null, last = null;
-  mc.addEventListener('mousedown', e => {
-    const r = mc.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-    const n = nodeAt(mx, my);
-    drag = n ? { node: n } : { pan: true }; last = [e.clientX, e.clientY]; mc.classList.add('dragging');
-  });
-  addEventListener('mouseup', () => { drag = null; mc.classList.remove('dragging'); });
-  mc.addEventListener('mousemove', e => {
-    const r = mc.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-    if (drag && drag.pan) { mcam.x += e.clientX - last[0]; mcam.y += e.clientY - last[1]; }
-    else if (drag && drag.node && drag.node.id !== 'self') {
-      drag.node.x = mcam.wx(mx); drag.node.y = mcam.wy(my); drag.node.fixed = true; M.heat = Math.max(M.heat, .3);
-    }
-    last = [e.clientX, e.clientY];
-    const n = drag ? (drag.node || null) : nodeAt(mx, my);
-    M.hover = n;
-    if (n) showTip(e.clientX, e.clientY, `<b>${esc(n.label)}</b>${rows(n.info || {})}`); else hideTip();
-  });
-  mc.addEventListener('mouseleave', () => { M.hover = null; hideTip(); });
-  mc.addEventListener('dblclick', e => {
-    const r = mc.getBoundingClientRect(), n = nodeAt(e.clientX - r.left, e.clientY - r.top);
-    if (n) n.fixed = n.id === 'self'; else fitMemory();
-  });
-})();
-
-/* ---------- neural network ---------- */
-const nc = $('#nc');
-const ncam = setup(nc, drawNet);
-const N = { data: null, t: 0, hover: null, playing: null, live: false, liveTimer: null };
-const COL = 64, ROW = 9;
-
-function b64(s, Type) {
-  const b = atob(s), u = new Uint8Array(b.length);
-  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
-  return new Type(u.buffer);
+function nodeTip(n) {
+  const info = Object.assign({}, n.info || {});
+  const what = info.what; delete info.what;
+  const links = M.adj.get(n)?.size || 0;
+  if (n.kind !== 'self') info.links = links;
+  return `<h4>${esc(n.kind === 'self' ? n.label : n.label)}</h4>${what ? `<div class="sub">${esc(what)}</div>` : ''}${dl(info)}`;
 }
 
-function setNet(d, tokens = true) {
-  const T = d.act ? b64(d.act, Uint8Array).length / (d.layers * d.groups) : 0;
-  N.data = { T, L: d.layers, G: d.groups, width: d.width, said: d.said ?? T, words: d.tokens || [],
-             act: b64(d.act, Uint8Array), scale: b64(d.scale, Float32Array), idx: b64(d.idx, Uint16Array) };
-  if (tokens) { N.t = Math.min(N.t, T - 1); renderTokens(); } else N.t = 0;
-  if (!N.fitted) fitNet();
-  $('#empty').textContent = '';
-  $('#play').disabled = T < 2;
-  drawNet();
+function drawMemory() {
+  const t = performance.now() / 1000, k = cams.memory.k;
+  const focus = (press?.node) || (hovered && hovered.id ? hovered : null) || M.focus;
+  const near = focus ? M.adj.get(focus) : null;
+  const lit = n => !focus || n === focus || near.has(n);
+  // edges: dim ones in one path, lit ones in another
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = focus ? '#16191d' : C.line2;
+  ctx.beginPath();
+  for (const e of M.edges) if (!(focus && lit(e.a) && lit(e.b) && (e.a === focus || e.b === focus))) {
+    ctx.moveTo(sx(e.a.x), sy(e.a.y)); ctx.lineTo(sx(e.b.x), sy(e.b.y));
+  }
+  ctx.stroke();
+  if (focus) {
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1.3; ctx.beginPath();
+    for (const e of M.edges) if (e.a === focus || e.b === focus) { ctx.moveTo(sx(e.a.x), sy(e.a.y)); ctx.lineTo(sx(e.b.x), sy(e.b.y)); }
+    ctx.stroke();
+  }
+  // nodes
+  for (const n of M.nodes) {
+    const x = sx(n.x), y = sy(n.y), r = radius(n);
+    if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
+    ctx.globalAlpha = lit(n) ? 1 : 0.2;
+    ctx.fillStyle = C[n.kind] || C.object;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fill();
+    if (n.kind === 'self') { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.283); ctx.stroke(); }
+    if (n === focus) { ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.283); ctx.stroke(); }
+    if (M.active.has(n.id)) {
+      ctx.strokeStyle = C.accent; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4);
+      ctx.beginPath(); ctx.arc(x, y, r + 7, 0, 6.283); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  // labels last, so they sit on top
+  ctx.textBaseline = 'middle';
+  for (const n of M.nodes) {
+    const show = n.kind !== 'word' || k > 1.4 || (focus && lit(n));
+    if (!show) continue;
+    const x = sx(n.x), y = sy(n.y);
+    if (x < -40 || y < -40 || x > W + 200 || y > H + 40) continue;
+    ctx.font = n.kind === 'self' ? `600 13px ${css('--font')}` : `12px ${css('--font')}`;
+    ctx.fillStyle = n === focus ? '#fff' : lit(n) ? (n.kind === 'self' ? '#fff' : '#b9bfc7') : '#3a4048';
+    ctx.fillText(n.kind === 'self' ? n.label.toUpperCase() : n.label, x + radius(n) + 7, y);
+  }
+}
+
+/* ---------- network ---------- */
+const COL = 64, ROW = 10;
+const N = { d: null, t: 0, playing: null, live: false, timer: null, brain: null };
+
+function b64(s, T) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new T(u.buffer); }
+
+function load(r) {
+  const act = b64(r.act, Uint8Array), L = r.layers, G = r.groups, T = act.length / (L * G);
+  const order = new Array(T * L), rank = new Uint8Array(T * L * G), best = new Uint16Array(T * L), mean = new Float32Array(T);
+  for (let t = 0; t < T; t++) {
+    let m = 0;
+    for (let i = 0; i < L; i++) {
+      const base = (t * L + i) * G, o = Array.from({ length: G }, (_, j) => j).sort((p, q) => act[base + q] - act[base + p]);
+      order[t * L + i] = o; best[t * L + i] = o[0];
+      o.forEach((j, r) => { rank[base + j] = r; });
+      for (let j = 0; j < G; j++) m += act[base + j];
+    }
+    mean[t] = m / (L * G * 255);
+  }
+  const mx = Math.max(...mean, 1e-6);
+  return { T, L, G, width: r.width, act, order, rank, best, mean: mean.map(v => v / mx),
+           scale: b64(r.scale, Float32Array), idx: b64(r.idx, Uint16Array),
+           words: r.tokens || [], said: r.said ?? T, reply: r.reply || '' };
 }
 
 function fitNet() {
-  const d = N.data; if (!d || !ncam.w) return;
-  const W = (d.L - 1) * COL, H = (d.G - 1) * ROW;
-  const k = Math.min((ncam.w - 120) / W, (ncam.h - 330) / H);
-  ncam.k = k; ncam.x = (ncam.w - W * k) / 2; ncam.y = 160 + (ncam.h - 330 - H * k) / 2;
-  N.fitted = true;
+  const d = N.d || { L: N.brain?.layers || 24, G: 64 };
+  const w = (d.L - 1) * COL, h = (d.G - 1) * ROW, c = cams.network;
+  const top = 92, bottom = composerHeight() + 40;
+  c.k = Math.min((W - 140) / w, (H - top - bottom) / h);
+  c.x = (W - w * c.k) / 2; c.y = top + (H - top - bottom - h * c.k) / 2;
 }
-
-const at = (t, i, j) => N.data.act[(t * N.data.L + i) * N.data.G + j] / 255;
-function top(t, i, m) {
-  const G = N.data.G, a = [];
-  for (let j = 0; j < G; j++) a.push(j);
-  return a.sort((p, q) => at(t, i, q) - at(t, i, p)).slice(0, m);
-}
+const composerHeight = () => $('#composer').offsetHeight || 60;
+const A = (t, i, j) => N.d.act[(t * N.d.L + i) * N.d.G + j] / 255;
 
 function drawNet() {
-  const c = ncam.ctx, d = N.data;
-  c.clearRect(0, 0, ncam.w, ncam.h);
-  if (!d) return;
-  const t = N.t, k = ncam.k, r = Math.max(1.2, Math.min(5, 2.2 * Math.sqrt(k)));
-  const X = i => ncam.sx(i * COL), Y = j => ncam.sy(j * ROW);
-  const h = N.hover;
-  c.save(); c.beginPath(); c.rect(0, 122, ncam.w, ncam.h - 122 - 132); c.clip();
-  // links between the strongest neurons of neighbouring layers
+  const d = N.d;
+  if (!d) return drawSkeleton();
+  const t = N.t, k = cams.network.k, h = hovered && hovered.i !== undefined ? hovered : null;
+  const X = i => sx(i * COL), Y = j => sy(j * ROW);
+  const r = Math.max(1.3, Math.min(4.5, 2.4 * Math.sqrt(k)));
+  // links between the strongest neurons of neighbouring layers, batched by strength
+  const buckets = [[], [], [], []], hot = [];
   for (let i = 0; i < d.L - 1; i++) {
-    const A = top(t, i, 7), B = top(t, i + 1, 7);
-    for (const a of A) for (const b of B) {
-      const s = Math.sqrt(at(t, i, a) * at(t, i + 1, b));
-      const hot = h && ((h.i === i && h.j === a) || (h.i === i + 1 && h.j === b));
-      c.strokeStyle = hot ? `rgba(245,180,0,${0.35 + 0.6 * s})` : `rgba(245,180,0,${(h ? 0.05 : 0.22) * s})`;
-      c.lineWidth = hot ? 1.4 : 1;
-      c.beginPath(); c.moveTo(X(i), Y(a)); c.lineTo(X(i + 1), Y(b)); c.stroke();
+    const A1 = d.order[t * d.L + i].slice(0, 6), B1 = d.order[t * d.L + i + 1].slice(0, 6);
+    for (const a of A1) for (const b of B1) {
+      const s = Math.sqrt(A(t, i, a) * A(t, i + 1, b));
+      const seg = [X(i), Y(a), X(i + 1), Y(b)];
+      if (h && ((h.i === i && h.j === a) || (h.i === i + 1 && h.j === b))) hot.push(seg);
+      else buckets[Math.min(3, Math.floor(s * 4))].push(seg);
     }
   }
+  ctx.lineWidth = 1;
+  buckets.forEach((segs, q) => {
+    ctx.strokeStyle = `rgba(245,180,0,${(h ? 0.03 : 0.05) + (h ? 0.04 : 0.11) * q})`;
+    ctx.beginPath(); for (const [a, b, c, e] of segs) { ctx.moveTo(a, b); ctx.lineTo(c, e); } ctx.stroke();
+  });
+  if (hot.length) {
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1.4;
+    ctx.beginPath(); for (const [a, b, c, e] of hot) { ctx.moveTo(a, b); ctx.lineTo(c, e); } ctx.stroke();
+  }
+  // neurons batched into brightness levels
+  const levels = Array.from({ length: 8 }, () => []);
   for (let i = 0; i < d.L; i++) {
-    let best = 0;
-    for (let j = 1; j < d.G; j++) if (at(t, i, j) > at(t, i, best)) best = j;
+    const x = X(i);
+    if (x < -10 || x > W + 10) continue;
+    const top = d.best[t * d.L + i];
     for (let j = 0; j < d.G; j++) {
-      const v = at(t, i, j);
-      c.fillStyle = j === best ? COLORS.maker : `rgba(215,219,224,${0.12 + 0.88 * v})`;
-      c.beginPath(); c.arc(X(i), Y(j), h && h.i === i && h.j === j ? r + 2.5 : r, 0, 7); c.fill();
+      if (j === top) continue;
+      levels[Math.min(7, Math.floor(A(t, i, j) * 8))].push(x, Y(j));
     }
-    c.fillStyle = '#7d8590'; c.font = '11px -apple-system, system-ui, sans-serif'; c.textAlign = 'center';
-    c.fillText(`L${i + 1}`, X(i), Y(0) - 12);
   }
-  c.textAlign = 'left';
-  c.restore();
-  // a strip with every token: how strongly each layer worked on it
-  if (d.T > 1) {
-    const x0 = 18, y0 = 60, w = ncam.w - 36, hh = 28, cw = w / d.T, ch = hh / d.L;
-    for (let tt = 0; tt < d.T; tt++) for (let i = 0; i < d.L; i++) {
-      let m = 0; for (let j = 0; j < d.G; j++) m += at(tt, i, j);
-      c.fillStyle = `rgba(215,219,224,${0.06 + 1.6 * m / d.G})`;
-      c.fillRect(x0 + tt * cw, y0 + 24 + i * ch, Math.max(1, cw - 0.5), ch);
-    }
-    c.strokeStyle = COLORS.maker; c.strokeRect(x0 + t * cw, y0 + 23, Math.max(2, cw), hh + 2);
-    N.strip = { x0, y0: y0 + 24, w, h: hh, cw };
-  } else N.strip = null;
+  levels.forEach((pts, q) => {
+    ctx.fillStyle = `rgba(228,230,233,${0.14 + 0.12 * q})`;
+    ctx.beginPath();
+    for (let p = 0; p < pts.length; p += 2) { ctx.moveTo(pts[p] + r, pts[p + 1]); ctx.arc(pts[p], pts[p + 1], r, 0, 6.283); }
+    ctx.fill();
+  });
+  ctx.fillStyle = C.accent; ctx.beginPath();
+  for (let i = 0; i < d.L; i++) { const j = d.best[t * d.L + i], x = X(i), y = Y(j); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 6.283); }
+  ctx.fill();
+  if (h) {
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(h.i), Y(h.j), r + 3, 0, 6.283); ctx.stroke();
+  }
+  labels(d.L);
 }
 
-function neuronAt(mx, my) {
-  const d = N.data; if (!d) return null;
-  const i = Math.round(ncam.wx(mx) / COL), j = Math.round(ncam.wy(my) / ROW);
+function drawSkeleton() {
+  const L = N.brain?.layers;
+  if (!L) return;
+  const r = Math.max(1.2, Math.min(3.5, 2 * Math.sqrt(cams.network.k)));
+  ctx.fillStyle = '#23272d'; ctx.beginPath();
+  for (let i = 0; i < L; i++) for (let j = 0; j < 64; j++) {
+    const x = sx(i * COL), y = sy(j * ROW); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 6.283);
+  }
+  ctx.fill();
+  labels(L);
+}
+
+function labels(L) {
+  ctx.fillStyle = C.faint; ctx.font = `11px ${css('--font')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  const every = cams.network.k < 0.45 ? 4 : cams.network.k < 0.8 ? 2 : 1;
+  for (let i = 0; i < L; i++) if (i % every === 0 || i === L - 1) ctx.fillText(`L${i + 1}`, sx(i * COL), sy(0) - 14);
+  ctx.textAlign = 'left';
+}
+
+function neuronAt(x, y) {
+  const d = N.d; if (!d) return null;
+  const i = Math.round(wx(x) / COL), j = Math.round(wy(y) / ROW);
   if (i < 0 || i >= d.L || j < 0 || j >= d.G) return null;
-  const dist = Math.hypot(ncam.sx(i * COL) - mx, ncam.sy(j * ROW) - my);
-  return dist < Math.max(6, 4 * Math.sqrt(ncam.k)) ? { i, j } : null;
+  const tol = Math.max(7, ROW * cams.network.k * 0.6);
+  return Math.abs(sx(i * COL) - x) < tol && Math.abs(sy(j * ROW) - y) < tol ? { i, j } : null;
 }
 
 function neuronTip(n) {
-  const d = N.data, t = N.t, g = d.width / d.G;
-  const v = at(t, n.i, n.j), real = v * d.scale[t * d.L + n.i];
-  const order = top(t, n.i, d.G).indexOf(n.j) + 1;
-  const word = d.words[t] !== undefined ? JSON.stringify(d.words[t]) : '(live)';
-  return `<b>Layer ${n.i + 1} · block ${n.j + 1}</b>` + rows({
-    'neurons': `${n.j * g} to ${(n.j + 1) * g - 1}`,
-    'strongest': `N${d.idx[(t * d.L + n.i) * d.G + n.j]}`,
-    '|activation|': real.toFixed(3),
-    'rank in layer': `${order} of ${d.G}`,
-    'token': word,
+  const d = N.d, t = N.t, g = d.width / d.G, base = (t * d.L + n.i) * d.G + n.j;
+  return `<h4>Layer ${n.i + 1} · block ${n.j + 1}</h4><div class="sub">${esc(tokenLabel(d.words[t] ?? ''))}</div>` + dl({
+    'neurons': `${n.j * g}–${(n.j + 1) * g - 1}`,
+    'strongest': `N${d.idx[base]}`,
+    'activation': (A(t, n.i, n.j) * d.scale[t * d.L + n.i]).toFixed(3),
+    'rank in layer': `${d.rank[base] + 1} of ${d.G}`,
   });
 }
 
-(function netMouse() {
-  let drag = null, last = null;
-  nc.addEventListener('mousedown', e => {
-    const r = nc.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top, s = N.strip;
-    if (s && my >= s.y0 && my <= s.y0 + s.h && mx >= s.x0 && mx <= s.x0 + s.w) {
-      select(Math.min(N.data.T - 1, Math.floor((mx - s.x0) / s.cw))); return;
-    }
-    drag = true; last = [e.clientX, e.clientY]; nc.classList.add('dragging');
-  });
-  addEventListener('mouseup', () => { drag = null; nc.classList.remove('dragging'); });
-  nc.addEventListener('mousemove', e => {
-    const r = nc.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-    if (drag) { ncam.x += e.clientX - last[0]; ncam.y += e.clientY - last[1]; last = [e.clientX, e.clientY]; drawNet(); return; }
-    const s = N.strip;
-    if (s && my >= s.y0 && my <= s.y0 + s.h && mx >= s.x0 && mx <= s.x0 + s.w) {
-      const tt = Math.min(N.data.T - 1, Math.floor((mx - s.x0) / s.cw));
-      showTip(e.clientX, e.clientY, `<b>token ${tt + 1}</b>${esc(JSON.stringify(N.data.words[tt] || ''))}`);
-      return;
-    }
-    const n = neuronAt(mx, my);
-    if ((n && (!N.hover || n.i !== N.hover.i || n.j !== N.hover.j)) || (!n && N.hover)) { N.hover = n; drawNet(); }
-    if (n) showTip(e.clientX, e.clientY, neuronTip(n)); else hideTip();
-  });
-  nc.addEventListener('mouseleave', () => { N.hover = null; hideTip(); drawNet(); });
-  nc.addEventListener('dblclick', () => { fitNet(); drawNet(); });
-})();
-
-function select(t) {
-  if (!N.data) return;
-  N.t = Math.max(0, Math.min(N.data.T - 1, t));
-  document.querySelectorAll('.tok').forEach((el, i) => el.classList.toggle('sel', i === N.t));
-  const el = document.querySelectorAll('.tok')[N.t]; if (el) el.scrollIntoView({ block: 'nearest' });
-  drawNet();
-}
+const tokenLabel = w => w.replace(/\n/g, '⏎').replace(/^ /, '·') || '∅';
+const special = w => /^<\|.*\|>$|^<\/?think>$/.test(w) || w === '\n';
 
 function renderTokens() {
-  const d = N.data, box = $('#tokens');
+  const d = N.d, box = $('#tokens');
+  box.hidden = d.T < 2;
   box.innerHTML = '';
+  const frag = document.createDocumentFragment();
   d.words.forEach((w, i) => {
     const el = document.createElement('span');
-    const special = /^<\|.*\|>$/.test(w) || w === '\n';
-    el.className = 'tok' + (i >= d.said ? ' reply' : '') + (special ? ' special' : '') + (i === N.t ? ' sel' : '');
-    el.textContent = w.replace(/\n/g, '⏎');
-    el.onmouseenter = () => { if (!N.playing) select(i); };
-    el.onclick = () => select(i);
-    box.appendChild(el);
+    el.className = 'tok ' + (special(w) ? 'special' : i < d.said ? 'said' : 'reply');
+    el.textContent = tokenLabel(w);
+    el.style.setProperty('--a', (0.15 + 0.85 * d.mean[i]).toFixed(2));
+    el.dataset.i = i;
+    frag.appendChild(el);
   });
+  box.appendChild(frag);
+}
+$('#tokens').addEventListener('pointerover', e => { const i = e.target.dataset?.i; if (i !== undefined && !N.playing) select(+i, false); });
+$('#tokens').addEventListener('click', e => { const i = e.target.dataset?.i; if (i !== undefined) select(+i); });
+
+function select(t, scroll = true) {
+  if (!N.d) return;
+  t = Math.max(0, Math.min(N.d.T - 1, t));
+  const toks = $('#tokens').children;
+  toks[N.t]?.classList.remove('sel'); toks[t]?.classList.add('sel');
+  if (scroll) toks[t]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  N.t = t; redraw();
+  if (hovered && hovered.i !== undefined) showTip(lastMouse[0], lastMouse[1], neuronTip(hovered));
+}
+let lastMouse = [0, 0];
+addEventListener('pointermove', e => { lastMouse = [e.clientX, e.clientY]; });
+
+function showThought(raw) {
+  const box = $('#thought');
+  let data = null;
+  try { data = JSON.parse(raw); } catch { /* cut off: read what we can */ }
+  const acts = data ? data.actions || [] : [...raw.matchAll(/"do":\s*"(\w+)"(?:[^}]*?"name":\s*"([^"]*)")?/g)].map(m => ({ do: m[1], name: m[2] }));
+  const say = data ? data.reply : (raw.match(/"reply":\s*"((?:[^"\\]|\\.)*)/) || [])[1];
+  box.innerHTML = acts.map(a => `<span class="act">${esc(a.do.replace(/_/g, ' '))}${a.name || a.subject ? ': ' + esc(a.name || a.subject) : ''}</span>`).join('')
+    + (say ? `<span class="say">“${esc(say)}”</span>` : acts.length ? '' : '<span>stays quiet</span>');
+  box.hidden = false;
 }
 
+function note(text) { const n = $('#note'); n.textContent = text || ''; n.hidden = !text; }
+
 async function think() {
-  const text = $('#say').value.trim(); if (!text) return;
-  stopLive();
+  const text = $('#say').value.trim(); if (!text) return $('#say').focus();
+  stopLive(); stopPlay();
   const go = $('#go'); go.disabled = true; go.textContent = 'Thinking…';
-  $('#reply').textContent = brainInfo && !brainInfo.loaded ? 'loading the cortex…' : '';
+  note(N.brain && !N.brain.loaded ? 'Waking the cortex up, this takes a moment the first time.' : '');
   try {
-    const d = await (await fetch('/api/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ text }) })).json();
-    if (d.error) { $('#reply').textContent = d.error; return; }
-    N.t = d.said; setNet(d); select(d.said);
-    $('#reply').textContent = 'it thinks: ' + d.reply;
-    brainInfo && (brainInfo.loaded = true); status();
-  } catch (e) { $('#reply').textContent = 'could not reach the Machine'; }
+    const r = await (await fetch('/api/trace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })).json();
+    if (r.error) return note(r.error);
+    note('');
+    N.d = load(r);
+    if (N.brain) N.brain.loaded = true;
+    renderTokens(); showThought(r.reply);
+    $('#play').hidden = false; $('#empty').hidden = true;
+    requestAnimationFrame(() => { fitNet(); N.t = -1; select(N.d.said); });
+  } catch { note('Could not reach the Machine.'); }
   finally { go.disabled = false; go.textContent = 'Think'; }
 }
 
+function stopPlay() { clearInterval(N.playing); N.playing = null; $('#play').textContent = 'Play'; }
 function play() {
-  if (N.playing) { clearInterval(N.playing); N.playing = null; $('#play').textContent = 'Play'; return; }
-  if (N.t >= N.data.T - 1) select(0);
+  if (!N.d) return;
+  if (N.playing) return stopPlay();
+  if (N.t >= N.d.T - 1) select(0);
   $('#play').textContent = 'Pause';
-  N.playing = setInterval(() => {
-    if (N.t >= N.data.T - 1) return play();
-    select(N.t + 1);
-  }, 140);
+  N.playing = setInterval(() => N.t >= N.d.T - 1 ? stopPlay() : select(N.t + 1), 120);
 }
 
-function stopLive() {
-  N.live = false; clearInterval(N.liveTimer); $('#livebtn').classList.remove('on');
-}
+function stopLive() { N.live = false; clearInterval(N.timer); $('#livebtn').classList.remove('on'); }
 function toggleLive() {
   if (N.live) return stopLive();
-  N.live = true; $('#livebtn').classList.add('on'); $('#tokens').innerHTML = '';
-  N.liveTimer = setInterval(async () => {
+  stopPlay(); N.live = true; $('#livebtn').classList.add('on'); $('#tokens').hidden = true; $('#empty').hidden = true;
+  N.timer = setInterval(async () => {
     try {
-      const d = await (await fetch('/api/live')).json();
-      if (!d.act) { $('#empty').textContent = 'no cortex to watch'; return; }
-      d.tokens = undefined; setNet(Object.assign(d, { said: 1 }), false);
-      $('#reply').textContent = d.thinking ? 'thinking: ' + d.text : 'resting';
-    } catch (e) { stopLive(); }
+      const r = await (await fetch('/api/live')).json();
+      if (!r.act) return note('Nothing to watch yet.');
+      N.d = load(Object.assign(r, { tokens: [] })); N.t = 0; redraw();
+      if (r.thinking) showThought(r.text.slice(r.text.indexOf('{'))); else note('Resting. It lights up while it thinks.');
+    } catch { stopLive(); }
   }, 150);
 }
 
@@ -472,45 +573,39 @@ $('#play').onclick = play;
 $('#livebtn').onclick = toggleLive;
 $('#say').addEventListener('keydown', e => { if (e.key === 'Enter') think(); });
 addEventListener('keydown', e => {
-  if (document.activeElement === $('#say') || !N.data) return;
-  if (e.key === 'ArrowRight') select(N.t + 1);
-  if (e.key === 'ArrowLeft') select(N.t - 1);
+  if (view !== 'network' || document.activeElement === $('#say') || !N.d) return;
+  if (e.key === 'ArrowRight') { stopPlay(); select(N.t + 1); }
+  if (e.key === 'ArrowLeft') { stopPlay(); select(N.t - 1); }
   if (e.key === ' ') { e.preventDefault(); play(); }
 });
 
-/* ---------- shell ---------- */
-document.querySelectorAll('.tab').forEach(tab => tab.onclick = () => {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === tab));
-  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === tab.dataset.view));
-  hideTip();
-  if (tab.dataset.view === 'network') { fitNet(); drawNet(); }
-});
-
-function status() {
-  const net = $('#network').classList.contains('on');
-  const live = memLive ? '<span class="dot live"></span>awake' : '<span class="dot"></span>asleep, reading its memory file';
-  const b = brainInfo;
-  const model = b && b.model ? ` · cortex ${b.model}${b.layers ? `, ${b.layers} layers × ${b.width} neurons` : ''}` : ' · no cortex model';
-  $('#status').innerHTML = live + `${net ? model : ` · ${M.nodes.length - 1} memories`}`;
+/* ---------- views ---------- */
+function show(v) {
+  view = v;
+  document.querySelectorAll('nav [role=tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.view === v));
+  $('#legend').hidden = v !== 'memory';
+  $('#composer').hidden = v !== 'network';
+  hideTip(); hovered = null;
+  const empty = $('#empty');
+  if (v === 'memory') { empty.hidden = M.nodes.length > 1; empty.textContent = 'Nothing learned yet. Show it a face or a thing and tell it what it is.'; }
+  else {
+    empty.hidden = !!N.d;
+    empty.textContent = N.brain?.model ? 'Type something below to watch every layer work on it.'
+                                       : 'No cortex model yet. Run python -m the_machine download.';
+    if (!N.fitted) { fitNet(); N.fitted = true; }
+  }
+  redraw();
 }
+document.querySelectorAll('nav [role=tab]').forEach(b => b.onclick = () => show(b.dataset.view));
 
 async function init() {
+  resize();
+  requestAnimationFrame(loop);
   await loadMemory();
-  for (let i = 0; i < 400 && simulate(); i++);
-  fitMemory(); fitted = true; drawMemory();
-  try { brainInfo = await (await fetch('/api/brain')).json(); } catch (e) {}
-  if (brainInfo && brainInfo.live) $('#livebtn').style.display = '';
-  $('#empty').textContent = brainInfo && brainInfo.model ? 'say something above to see how it thinks'
-                                                         : 'no cortex model. Run: python -m the_machine download';
-  status();
-  setInterval(loadMemory, memLive ? 2000 : 10000);
-  (function frame() {
-    const moved = simulate();
-    if (moved || M.active.size || M.hover) drawMemory();
-    requestAnimationFrame(frame);
-  })();
+  try { N.brain = await (await fetch('/api/brain')).json(); } catch { N.brain = null; }
+  $('#livebtn').hidden = !N.brain?.live;
+  if (N.brain?.live) setInterval(loadMemory, 2000);
 }
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', status));
 init();
 </script>
 </body>
