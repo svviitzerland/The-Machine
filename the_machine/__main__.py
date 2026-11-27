@@ -32,6 +32,9 @@ def main(argv: list[str] | None = None) -> None:
     if a.command != "download":
         # Models are fetched once by `download`; after that the Machine never touches the network.
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        if a.command != "bench":                   # bench fetches a sample image
+            from .offline import guard
+            guard()
 
     if a.body:
         cfg.body.address = a.body

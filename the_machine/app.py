@@ -43,7 +43,8 @@ def run(cfg: C.Config, use_mic: bool = True, browser: bool = True, silent: bool 
               "Run: python -m the_machine download", file=sys.stderr)
     mind = Mind(cfg, store, voice.say, FaceEngine(str(paths["yunet"]), str(paths["sface"]), cfg.vision),
                 load_object_engine(cfg), cortex=cortex)
-    ears = make_ears(cfg.speech, inbox.put, cfg.speech.language, prefer_mic=use_mic)
+    # People type on the page, so the terminal's input isn't read.
+    ears = make_ears(cfg.speech, inbox.put, cfg.speech.language, prefer_mic=use_mic, keyboard=False)
     cam = Camera(cfg.vision)
     head = Head(cfg.body.address, cfg.body) if cfg.body.address else None
     aim = Aim(cfg.body)

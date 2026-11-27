@@ -112,17 +112,26 @@ class MicEars:
         self.stream.stop()
 
 
-def make_ears(cfg: SpeechConfig, on_text: Callable[[str], None], language: str, prefer_mic: bool = True):
+class NoEars:
+    """No microphone: people type to it instead."""
+
+    def close(self) -> None:
+        pass
+
+
+def make_ears(cfg: SpeechConfig, on_text: Callable[[str], None], language: str, prefer_mic: bool = True,
+              keyboard: bool = True):
     if prefer_mic:
         try:
             ears = MicEars(cfg, on_text, language)
-            print("[ears] microphone + faster-whisper ready (you can also type)", file=sys.stderr)
-            KeyboardEars(on_text)
+            print("[ears] microphone + faster-whisper ready", file=sys.stderr)
+            if keyboard:
+                KeyboardEars(on_text)
             return ears
         except Exception as e:  # missing optional deps or no mic
             hint = " Run: python -m the_machine download" if "ffline" in str(e) or "ncomplete" in str(e) else ""
             print(f"[ears] microphone unavailable ({type(e).__name__}); type to talk.{hint}", file=sys.stderr)
-    return KeyboardEars(on_text)
+    return KeyboardEars(on_text) if keyboard else NoEars()
 
 
 def _now() -> float:
