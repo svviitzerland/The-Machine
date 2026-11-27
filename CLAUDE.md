@@ -2,7 +2,7 @@
 
 ## Project
 
-The Machine is an offline, CPU-only AI companion that learns all the time from one teacher, through a webcam and speech. It is written in Python. The heavy lifting runs in native code: OpenCV DNN and CTranslate2.
+The Machine is an offline AI companion that learns all the time from one teacher, through a webcam and speech. It is written in Python. The heavy lifting runs in native code: OpenCV DNN, CTranslate2 and llama.cpp.
 
 The project is **public**.
 
@@ -17,7 +17,8 @@ uv venv && uv pip install -e ".[dev]"     # setup
 
 ## Architecture rules
 
-- **Core is language-agnostic.** No English, or any other language, belongs in `core/` or `memory/`. Intent patterns, phrases and stopwords live only in `language/packs/<code>.py`. The core sees only `Intent.kind` and phrase keys. A new phrase key must be added to every pack.
+- **The Mind holds no words.** Nothing the Machine says is written in code: no templates, no fixed phrases, no intent patterns. `core/` and `memory/` pass plain data; the cortex (`cortex/`) turns it into language and decides what to say. English lives only in `cortex/senses.py` and the prompt in `cortex/cortex.py`.
+- **Memory changes only through actions.** The cortex changes memory only through the actions in `cortex/cortex.py`, and a name is only stored if it was really said. Things the Machine notices on its own never teach it.
 - **`Mind` stays I/O-free.** Camera, microphone, TTS and display belong in `app.py` and `perception/`. This keeps `Mind` testable with fakes (see `tests/test_core.py::FakeFaces`).
 - **All tunable numbers go in `config.py`.** Don't scatter magic numbers through the code.
 - **No network at runtime.** Only `perception/models.py` (the one-time download) and `bench.py` (the sample image) may touch the network.
