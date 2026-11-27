@@ -95,6 +95,18 @@ class Mind:
         if self._capture is not None:      # the cortex is talking; just note what happened
             self._capture.append(key)
             return
+        if self.cortex is not None and key in self.lang.events:
+            return self._notice(key, kw)
+        self._template(key, **kw)
+
+    def _notice(self, key: str, kw: dict) -> None:
+        """Let the cortex react to something that happened, in its own words."""
+        event = self.lang.events[key].format(**kw)
+        self.thinking += 1
+        self.cortex.think(self.situation(), self.history(answering=False), event,
+                          lambda thought, said: self._thoughts.put((thought, said, (key, kw))), event=True)
+
+    def _template(self, key: str, **kw) -> None:
         stage = self.stage
         self.mood = mood_for(key, self.drives.curiosity, self.drives.energy)
         text, rate = self.persona.style(self.lang.say(key, stage, **kw), self.mood, stage)
@@ -197,12 +209,12 @@ class Mind:
         if self.sleeping:
             return None
         while not self._thoughts.empty():
-            thought, said = self._thoughts.get()
+            thought, said, noticed = self._thoughts.get()
             self.thinking -= 1
             if thought is None:
-                self._understand_by_rules(said)
+                self._template(noticed[0], **noticed[1]) if noticed else self._understand_by_rules(said)
             else:
-                self._carry_out(thought, said)
+                self._carry_out(thought, said, quiet_ok=noticed is not None)
         self.drives.tick(len(self.tracker.tracks))
         now = time.time()
         if self.drives.sleepy:
@@ -244,7 +256,7 @@ class Mind:
             self.thought = "..."
             self.thinking += 1
             self.cortex.think(self.situation(), self.history(), text,
-                              lambda thought, said: self._thoughts.put((thought, said)))
+                              lambda thought, said: self._thoughts.put((thought, said, None)))
             return
         self._understand_by_rules(text)
 
@@ -491,9 +503,11 @@ class Mind:
     }
     _BLOCKING = {"no_face", "no_vision", "not_allowed"}
 
-    def _carry_out(self, thought, said: str) -> None:
+    def _carry_out(self, thought, said: str, quiet_ok: bool = False) -> None:
         self._capture = []
         sleep_after = False
+        if quiet_ok:                       # noticing something never teaches; only people do
+            thought.actions = [a for a in thought.actions if a.name == "go_to_sleep"]
         try:
             for a in thought.actions:
                 if a.name == "go_to_sleep":
@@ -508,7 +522,9 @@ class Mind:
         finally:
             happened, self._capture = self._capture, None
         blocked = next((k for k in happened if k in self._BLOCKING), None)
-        if blocked or not thought.reply:
+        if not blocked and not thought.reply and quiet_ok:
+            pass                           # it noticed something and chose to stay quiet
+        elif blocked or not thought.reply:
             self.speak(blocked or (happened[-1] if happened else "confused"), w="", n="", me=self.cfg.name)
         else:
             key = happened[-1] if happened else "calm"
@@ -568,10 +584,12 @@ class Mind:
         lines.append(f"You feel {self.mood}; curiosity {self.drives.curiosity:.0%}, energy {self.drives.energy:.0%}.")
         return "\n".join(lines)
 
-    def history(self, turns: int = 6) -> list[tuple[str, str]]:
+    def history(self, turns: int = 6, answering: bool = True) -> list[tuple[str, str]]:
         rows = self.store.q("SELECT kind, text FROM episodes WHERE kind IN ('hear','say') AND text IS NOT NULL "
-                            "ORDER BY ts DESC, id DESC LIMIT ?", (turns + 1,))
-        rows = list(reversed(rows))[:-1]       # the newest one is the utterance being answered
+                            "ORDER BY ts DESC, id DESC LIMIT ?", (turns + answering,))
+        rows = list(reversed(rows))
+        if answering:
+            rows = rows[:-1]                   # the newest one is the utterance being answered
         return [("user" if r["kind"] == "hear" else "assistant", r["text"]) for r in rows]
 
     def sleep(self) -> SleepReport:

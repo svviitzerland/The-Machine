@@ -39,6 +39,8 @@ class LanguagePack:
     durations: dict[str, str] = field(default_factory=lambda: {
         "d": "{n} days", "h": "{n} hours", "m": "{n} minutes", "d1": "a day", "h1": "an hour", "m1": "a minute"})
     token: str = r"[^\W\d_]+"
+    # What just happened, told to the language cortex so it can react in its own words.
+    events: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         unknown = {k for k, _ in self.intents} - set(INTENT_KINDS)

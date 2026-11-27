@@ -65,4 +65,14 @@ PACK = LanguagePack(
         "confused":       ["I don't understand yet. Teach me?", "Hmm... {w}?"],
         "confusion_q":    ["I often confuse {a} and {b}. Help me tell them apart."],
     },
+    events={
+        "greet_known":  "{n} has just come into view.",
+        "greet_admin":  "{n}, your maker, has just come into view.",
+        "ask_name":     "Someone you don't know is in front of you.",
+        "ask_stranger": "You have seen this person {k} times, but nobody has told you who they are.",
+        "sleepy":       "You are running low on energy and want to sleep soon.",
+        "sleep_start":  "You are falling asleep to sort out your memories.",
+        "sleep_done":   "You just woke up. While sleeping you went over {r} memories and found {s} new faces.",
+        "confusion_q":  "You keep mixing up {a} and {b}.",
+    },
 )

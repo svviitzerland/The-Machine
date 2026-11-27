@@ -250,3 +250,27 @@ def test_cortex_falls_back_when_the_model_fails(tmp_path):
             break
         time.sleep(0.01)
     assert "coffee" in said[-1].lower()
+
+
+def test_noticing_is_voiced_by_cortex_and_never_teaches(tmp_path):
+    from the_machine.language.cortex import LLMCortex
+    import json, time as _t
+
+    class Greeter:
+        def chat(self, messages, schema, max_tokens):
+            assert messages[-1]["content"].startswith("(")
+            return json.dumps({"actions": [{"do": "learn_other_person", "name": "Farhan"}],
+                               "reply": "There you are, Farhan."})
+
+    said = []
+    cfg = Config()
+    cfg.memory.db_path = tmp_path / "m.db"
+    m = Mind(cfg, Store(cfg.memory.db_path), said.append, cortex=LLMCortex(Greeter()))
+    m.speak("greet_admin", n="Farhan")
+    for _ in range(100):
+        m.tick()
+        if said:
+            break
+        _t.sleep(0.01)
+    assert said == ["There you are, Farhan."]
+    assert m.store.find_concept("Farhan", "person") is None

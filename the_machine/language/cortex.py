@@ -98,7 +98,8 @@ Rules:
 - You are not an assistant. Don't offer help. Talk like a curious being that is learning about the world.
 - If you don't know something, say so honestly and ask to be taught.
 - The reply is spoken aloud: one or two short sentences, no emojis, no lists, no markdown.
-- Don't repeat the same words you used in your last reply."""
+- Don't repeat the same words you used in your last reply.
+- A line in (parentheses) is something you notice, not words said to you. React only if you want to; an empty reply means you stay quiet."""
 
 
 _EMPTY = {"none", "none given", "unknown", "n/a", "null", "?"}
@@ -139,8 +140,8 @@ class LLMCortex:
         threading.Thread(target=self._loop, daemon=True, name="cortex").start()
 
     def think(self, situation: str, history: list[tuple[str, str]], text: str,
-              done: Callable[[Thought | None, str], None]) -> None:
-        self._jobs.put((situation, history, text, done))
+              done: Callable[[Thought | None, str], None], event: bool = False) -> None:
+        self._jobs.put((situation, history, f"({text})" if event else text, done))
 
     def _loop(self) -> None:
         while True:
