@@ -61,7 +61,7 @@ class MindConfig:
     language: str = "en"
     # Language cortex: first model found in models/ wins. Set MACHINE_LLM to force one.
     llm_models: list[str] = field(default_factory=lambda: [
-        "Qwen3.5-4B-Q4_K_M.gguf", "LFM3-1.7B-Q4_K_M.gguf",
+        "LFM3-1.7B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf",
         "LFM2.5-1.2B-Instruct-Q4_K_M.gguf", "granite-4.0-1b-Q4_K_M.gguf"])
     llm_gpu_layers: int = -1               # -1 = use the GPU (Metal) if there is one, 0 = CPU only
     persona: str = "machine"                # the_machine/language/personas/<name>.py                   # language pack code: the_machine/language/packs/<code>.py

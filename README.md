@@ -116,8 +116,12 @@ With a small local language model, the Machine understands normal sentences inst
 
 ```bash
 pip install "llama-cpp-python>=0.3.38" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal   # Mac
-# put a GGUF model in models/, for example Qwen3.5-4B-Q4_K_M.gguf or LFM3-1.7B-Q4_K_M.gguf
+curl -L -o models/LFM3-1.7B-Q4_K_M.gguf https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-Q4_K_M.gguf
 ```
+
+LFM3-1.7B (1.1 GB) is the default. Qwen3.5-4B also works if you prefer an Apache-2.0 model, but it is about 2.5 times slower. Compare models on your own machine with `python eval/cortex_eval.py models/<file>.gguf`.
+
+Things it notices on its own, like you walking in, also go through the model, so it greets you in its own words or stays quiet.
 
 Without a model it falls back to simple sentence patterns like "my name is ...".
 
