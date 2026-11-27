@@ -26,8 +26,11 @@ ACTIONS: dict[str, tuple[str, list[str], list[str]]] = {
     "correct_last": ("they say your last guess was wrong and give the right name", ["name"], ["which"]),
     "forget_person": ("the person who made you asks you to forget someone", ["name"], []),
     "go_to_sleep": ("you are told to rest, or you decide you need to", [], []),
+    "look": ("turn your head. at=person or thing, with which, to look at someone or something in view; "
+             "or at=left, right, up, down or ahead, as seen from you", ["at"], ["which"]),
 }
 
+GAZE = ("person", "thing", "left", "right", "up", "down", "ahead")
 ARG_FIELDS = sorted({a for _, req, opt in ACTIONS.values() for a in req + opt})
 SCHEMA = {
     "type": "object",
@@ -38,7 +41,9 @@ SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {"do": {"type": "string", "enum": list(ACTIONS)},
-                               **{f: {"type": "string", "maxLength": 60} for f in ARG_FIELDS if f != "which"},
+                               **{f: {"type": "string", "maxLength": 60} for f in ARG_FIELDS
+                                  if f not in ("which", "at")},
+                               "at": {"type": "string", "enum": list(GAZE)},
                                "which": {"type": "string", "enum": [str(i) for i in range(1, 10)]}},
                 "required": ["do"],
             },
@@ -58,8 +63,16 @@ EXAMPLES = """"oh hey, Rina here" -> {"actions": [{"do": "learn_my_name", "name"
 (It has been quiet for 1 minute.) -> {"actions": [], "reply": ""}"""
 
 
+# Only shown when it has a head to turn.
+BODY_EXAMPLES = """
+"look at Dimas" -> {"actions": [{"do": "look", "at": "person", "which": "2"}], "reply": "Hi Dimas."}
+"look up there" -> {"actions": [{"do": "look", "at": "up"}], "reply": "Up here?"}"""
+
+
 def prompt(senses: dict, examples: bool = True) -> str:
-    acts = "\n".join(f"- {k}({', '.join(r + [o + '?' for o in opt])}): {d}" for k, (d, r, opt) in ACTIONS.items())
+    body = senses.get("body")
+    acts = "\n".join(f"- {k}({', '.join(r + [o + '?' for o in opt])}): {d}" for k, (d, r, opt) in ACTIONS.items()
+                     if k != "look" or body)
     return f"""{describe(senses)}
 
 Answer in JSON: {{"actions": [...], "reply": "..."}}.
@@ -68,7 +81,7 @@ Actions change your memory. Take one only when someone has just told you somethi
 "which" is the number of the person or thing they mean.
 "reply" is what you say out loud, in your own words, or empty to stay quiet.
 A line in (parentheses) is something you noticed, not words said to you.""" + (
-        f"\n\nFor example:\n{EXAMPLES}" if examples else "")
+        f"\n\nFor example:\n{EXAMPLES}{BODY_EXAMPLES if body else ''}" if examples else "")
 
 
 def messages(senses: dict, history: list[tuple[str, str]], said: str | None = None,
@@ -94,6 +107,8 @@ class Thought:
 _EMPTY = {"none", "none given", "unknown", "n/a", "null", "?"}
 _NOT_NAMES = {"i", "me", "you", "he", "she", "they", "it", "this", "that", "my", "your"}
 # Names it would store must have been said out loud, so a guess never becomes a memory.
+# Going to sleep on something someone said needs them to have said something about sleep.
+_SLEEP_WORDS = re.compile(r"\b(sleep\w*|rest\w*|nap\w*|bed\w*|tired|night|lie down)\b", re.I)
 _GROUNDED = {"learn_my_name", "learn_other_person", "learn_object", "correct_last", "forget_person"}
 
 
@@ -112,6 +127,8 @@ def actions_from(data: dict, said: str) -> list[Action]:
         if any(k not in args for k in need):
             continue
         if a["do"] in _GROUNDED and (args["name"].lower() in _NOT_NAMES or not _said(args["name"], said)):
+            continue
+        if a["do"] == "go_to_sleep" and said and not _SLEEP_WORDS.search(said):
             continue
         out.append(Action(a["do"], args))
     return out

@@ -75,6 +75,12 @@ class Head:
                 self._sock.close()
 
 
+# Where "left", "right" and so on are in the picture. Its own left is the camera's left,
+# which is the left side of the (unmirrored) picture.
+DIRECTIONS = {"left": (0.05, 0.5), "right": (0.95, 0.5), "up": (0.5, 0.05), "down": (0.5, 0.95),
+              "ahead": (0.5, 0.5)}
+
+
 class Aim:
     """Where the head should point: at the person it is talking to, with the small
     movements of something alive, a glance at anyone else now and then, and a slow

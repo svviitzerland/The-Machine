@@ -104,6 +104,8 @@ class Mind:
         self._last_exchange = self._last_muse = time.time()
         self._last_ask = self._last_tired = self._last_stranger = 0.0
         self.thought = ""
+        self.has_body = False                         # set by the app when a head is attached
+        self.gaze: dict | None = None                 # where the cortex wants to look, for a while
         self.sleeping = False
         self.metrics = {"frames": 0, "embeds": 0, "detect_ms": 0.0, "embed_ms": 0.0, "objects_ms": 0.0}
 
@@ -299,7 +301,7 @@ class Mind:
     def _do(self, actions: list, ctx: dict) -> None:
         ctx["failed"], ctx["acted"] = [], bool(actions)
         if ctx["noticed"] is not None:            # noticing something never teaches; only people do
-            actions = [a for a in actions if a.name == "go_to_sleep"]
+            actions = [a for a in actions if a.name in ("go_to_sleep", "look")]
         for a in actions:
             if a.name == "go_to_sleep":
                 ctx["sleep"] = True
@@ -458,6 +460,25 @@ class Mind:
             return "no_face"
         self._teach(t, "face", name)
 
+    def _look(self, at: str, which: str | None = None) -> None:
+        """Choose where to look for a few seconds. Turning the head is the app's job."""
+        until = time.time() + self.cfg.mind.gaze_s
+        if at in ("person", "thing"):
+            t = self._pick("face" if at == "person" else "object", which, prefer_unknown=False)
+            if t is not None:
+                self.gaze = {"track": t.id, "kind": at, "until": until}
+                return
+            at = "ahead"
+        self.gaze = {"direction": at, "until": until}
+
+    def gaze_box(self):
+        """The box of what the Machine chose to look at, if it still sees it."""
+        g = self.gaze
+        if not g or time.time() > g["until"] or "track" not in g:
+            return None
+        t = (self.tracker if g["kind"] == "person" else self.things).tracks.get(g["track"])
+        return t.box if t else None
+
     def _forget_person(self, name: str) -> str | None:
         t = self.speaker()
         if not self.ethics.may_forget(t.concept_id if t else None):
@@ -527,6 +548,7 @@ class Mind:
             "wonder": wonder[:3],
             "feel": self.drives.as_dict(),
             "quiet_s": now - self._last_exchange,
+            "body": self.has_body,
         }
 
     def _facts_about(self, name: str) -> int:

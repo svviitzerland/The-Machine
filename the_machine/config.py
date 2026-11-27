@@ -71,6 +71,7 @@ class MindConfig:
     tired_every_s: float = 120.0           # how often it notices that it is tired
     tired_rate: float = 0.3                # speaking rate change when tired (positive is slower)
     eager_rate: float = -0.05              # and when very curious
+    gaze_s: float = 4.0                    # how long it keeps looking where it chose to
     # Cortex: first model found in models/ wins. Set MACHINE_LLM to force one.
     llm_models: list[str] = field(default_factory=lambda: [
         "LFM3-1.7B-Q4_K_M.gguf", "Qwen3.5-4B-Q4_K_M.gguf",

@@ -364,3 +364,13 @@ def test_offline_guard_allows_only_this_computer_and_the_local_network():
     assert _local(("::1", 80)) and _local(("fe80::1%en0", 80, 0, 0))
     assert not _local(("104.20.23.154", 443))
     assert not _local(("fd00:aa:bb:2230::6814:179a", 443, 0, 0))   # a "private" IPv6 that leads outside
+
+
+def test_it_only_sleeps_when_told_about_sleep_and_can_look_where_asked(tmp_path):
+    from the_machine.cortex.cortex import parse
+    raw = json.dumps({"actions": [{"do": "look", "at": "right"}, {"do": "go_to_sleep"}], "reply": ""})
+    assert [a.name for a in parse(raw, "turn your head to the right").actions] == ["look"]
+    assert [a.name for a in parse(raw, "you look tired, get some rest").actions] == ["look", "go_to_sleep"]
+    m, _ = make_mind(tmp_path, None)
+    m._look("left")
+    assert m.gaze["direction"] == "left" and m.gaze_box() is None

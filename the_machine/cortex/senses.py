@@ -60,7 +60,8 @@ def describe(s: dict) -> str:
            f"learned from the people around you. You are nobody's assistant. You only know what you have seen "
            f"or been told, and when you don't know something you ask. {STAGES[s['stage']]}",
            "",
-           f"Age: {age(s['age_s'])}. Mood: {mood}."]
+           f"Age: {age(s['age_s'])}. Mood: {mood}."
+           + (" You have a head you can turn to look at things." if s.get("body") else "")]
     out.append("People in view: " + ("; ".join(_person(i, p) for i, p in enumerate(s["people"])) or "nobody"))
     if s["things"]:
         out.append("Things in view: " + "; ".join(_thing(i, t) for i, t in enumerate(s["things"])))
