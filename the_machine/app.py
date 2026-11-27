@@ -11,6 +11,7 @@ import numpy as np
 from . import config as C
 from .core.mind import Mind
 from .language.pack import STAGE_NAMES
+from .language.llm import load_cortex
 from .language.persona import load_persona
 from .language.voice import Voice
 from .memory.store import Store
@@ -63,7 +64,7 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
                   on_start=lambda: ears and hasattr(ears, "muted") and ears.muted.set(),
                   on_end=lambda: ears and hasattr(ears, "muted") and ears.muted.clear())
     mind = Mind(cfg, store, voice.say, FaceEngine(str(paths["yunet"]), str(paths["sface"]), cfg.vision),
-                ObjectEncoder(), llm=_maybe_llm(cfg))
+                ObjectEncoder(), cortex=load_cortex(cfg))
     ears = make_ears(cfg.speech, inbox.put, mind.lang.asr_code, prefer_mic=use_mic)
     cam = Camera(cfg.vision)
     print(f"[machine] awake. voice={voice.backend}. Type or speak. Ctrl+C to stop.", file=sys.stderr)
@@ -97,11 +98,3 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
             cv2.destroyAllWindows()
         store.close()
         print("[machine] asleep. memories saved.", file=sys.stderr)
-
-
-def _maybe_llm(cfg: C.Config):
-    try:
-        from .language.llm import LocalLLM
-        return LocalLLM.maybe(cfg)
-    except Exception:
-        return None

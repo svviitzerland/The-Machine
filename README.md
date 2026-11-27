@@ -110,6 +110,17 @@ Measured on an Apple laptop CPU with `python -m the_machine bench`:
 
 Run `bench` on your own machine to get your numbers.
 
+## Understanding natural speech
+
+With a small local language model, the Machine understands normal sentences instead of fixed commands. "Hey, I'm Farhan", "call me Han" and "this is my brother Budi" all work, and its replies stop sounding like templates. The model only interprets and talks. Everything it learns still goes into the Machine's own memory, and the model reads that memory every time it answers, so it does not make up who you are.
+
+```bash
+pip install "llama-cpp-python>=0.3.38" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal   # Mac
+# put a GGUF model in models/, for example Qwen3.5-4B-Q4_K_M.gguf or LFM3-1.7B-Q4_K_M.gguf
+```
+
+Without a model it falls back to simple sentence patterns like "my name is ...".
+
 ## Voice and persona
 
 The Machine speaks with [Phonon](https://huggingface.co/gradium/phonon-31m-en), a small neural voice (31M parameters, Apache-2.0) that runs much faster than real time on a laptop CPU. Without it, it falls back to macOS `say` or espeak-ng.

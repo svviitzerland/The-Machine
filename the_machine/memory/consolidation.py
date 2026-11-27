@@ -106,6 +106,7 @@ class Consolidator:
             f"replayed={rep.concepts_replayed} protos {rep.prototypes_before}->{rep.prototypes_after} "
             f"strangers={rep.strangers_found} forgot={rep.episodes_forgotten}"), salience=0.9)
         return rep
+
     def _exemplars(self, cid: int, sources: tuple[str, ...] | None = None) -> tuple[list[int], np.ndarray]:
         sql = ("SELECT id, vec, source FROM episodes WHERE concept_id=? AND modality=? AND exemplar=1 "
                "AND vec IS NOT NULL")

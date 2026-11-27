@@ -1,6 +1,7 @@
 """Faces are simulated as clusters on the unit sphere, so the tests are deterministic and need no camera."""
 from __future__ import annotations
 
+import json
 import time
 
 import numpy as np
@@ -196,3 +197,56 @@ def test_persona_moods_change_rate_and_wording():
     assert "Who are you?" in texts and len(texts) > 1
     assert p.style("Hi", "curious", 2)[1] < p.style("Hi", "tired", 2)[1]
     assert p.style("Farhan... Farhan!", "happy", 0)[0] == "Farhan... Farhan!"
+
+
+class FakeLLM:
+    """Stands in for the LLM backend: returns a fixed JSON answer."""
+
+    def __init__(self, answer):
+        self.answer, self.seen = answer, []
+
+    def chat(self, messages, schema, max_tokens):
+        self.seen.append(messages)
+        return json.dumps(self.answer)
+
+
+def test_cortex_understands_natural_naming(tmp_path):
+    from the_machine.language.cortex import LLMCortex
+    rng = np.random.default_rng(7)
+    cfg = Config()
+    said = []
+    llm = FakeLLM({"actions": [{"do": "learn_my_name", "name": "Farhan"}], "reply": "Farhan! Nice to finally meet you."})
+    m = Mind(cfg, Store(tmp_path / "c.db"), said.append, face_engine=FakeFaces(), cortex=LLMCortex(llm))
+    _, sample = identity(rng)
+    box = np.array([100, 100, 120, 120], np.float32)
+    for x in sample(0, 5):
+        m.see([(box, x)])
+    m.hear("hey, it's me Farhan")
+    m.tick()
+    for _ in range(100):
+        if not m.thinking:
+            break
+        time.sleep(0.01)
+        m.tick()
+    assert said[-1] == "Farhan! Nice to finally meet you."
+    assert m.store.find_concept("Farhan", "person") is not None
+    assert m.ethics.admin_id is not None
+    assert "someone you don't recognize" in llm.seen[0][0]["content"]
+
+
+def test_cortex_falls_back_when_the_model_fails(tmp_path):
+    from the_machine.language.cortex import LLMCortex
+
+    class Broken:
+        def chat(self, *a):
+            raise RuntimeError("no model")
+
+    said = []
+    m = Mind(Config(), Store(tmp_path / "b.db"), said.append, cortex=LLMCortex(Broken()))
+    m.hear("coffee is a drink")
+    for _ in range(100):
+        m.tick()
+        if not m.thinking and said:
+            break
+        time.sleep(0.01)
+    assert "coffee" in said[-1].lower()

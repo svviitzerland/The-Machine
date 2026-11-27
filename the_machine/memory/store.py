@@ -125,6 +125,7 @@ class Store:
                 self._db.execute("UPDATE episodes SET source='teacher' WHERE kind='learn'")
         if self.get_self("born") is None:
             self.set_self("born", time.time())
+
     def q(self, sql: str, args: Iterable[Any] = ()) -> list[sqlite3.Row]:
         with self._lock:
             return self._db.execute(sql, tuple(args)).fetchall()
@@ -161,6 +162,7 @@ class Store:
                 return False
 
         return _Tx()
+
     def get_self(self, key: str, default: Any = None) -> Any:
         r = self.q("SELECT value FROM self WHERE key=?", (key,))
         return json.loads(r[0]["value"]) if r else default
@@ -168,6 +170,7 @@ class Store:
     def set_self(self, key: str, value: Any) -> None:
         self.x("INSERT INTO self(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                (key, json.dumps(value)))
+
     def new_concept(self, kind: str, name: str | None = None, role: str = "user") -> int:
         now = time.time()
         return self.x("INSERT INTO concepts(kind,name,created,last_seen,role) VALUES(?,?,?,?,?)",
@@ -194,6 +197,7 @@ class Store:
 
     def delete_concept(self, cid: int) -> None:
         self.x("DELETE FROM concepts WHERE id=?", (cid,))
+
     def add_episode(self, kind: str, *, modality: str | None = None, concept_id: int | None = None,
                     vec: np.ndarray | None = None, text: str | None = None, salience: float = 0.5,
                     exemplar: bool = False, ts: float | None = None, source: str = "sense") -> int:

@@ -68,12 +68,16 @@ def _chat(cfg: C.Config, silent: bool) -> None:
     from .language.voice import Voice
     from .memory.store import Store
     voice = Voice(load_persona(cfg.mind.persona), cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent)
-    m = Mind(cfg, Store(cfg.memory.db_path), voice.say)
+    from .language.llm import load_cortex
+    m = Mind(cfg, Store(cfg.memory.db_path), voice.say, cortex=load_cortex(cfg))
     print("[chat] text-only mode (no camera). Ctrl+D to quit.", file=sys.stderr)
     for line in sys.stdin:
         if line.strip():
             m.hear(line.strip())
             m.tick()
+            while m.thinking:
+                time.sleep(0.05)
+                m.tick()
     voice.wait()
 
 

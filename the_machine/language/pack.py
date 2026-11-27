@@ -46,6 +46,7 @@ class LanguagePack:
             raise ValueError(f"pack {self.code}: unknown intents {unknown}")
         self._compiled = [(k, re.compile(p, re.I)) for k, p in self.intents]
         self._tok = re.compile(self.token)
+
     def parse(self, text: str) -> Intent:
         t = re.sub(r"\s+", " ", text.strip().strip(".!")).strip()
         for kind, pat in self._compiled:
@@ -60,6 +61,7 @@ class LanguagePack:
 
     def content_words(self, text: str) -> list[str]:
         return [w for w in (t.lower() for t in self._tok.findall(text)) if len(w) > 1 and w not in self.stopwords]
+
     def say(self, key: str, stage: int = 2, **kw) -> str:
         text = random.choice(self.phrases[key]).format(**kw)
         if stage == 0 and key.startswith(("learned", "greet", "first")):

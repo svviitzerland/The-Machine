@@ -16,8 +16,8 @@ dependencies = [
 ears = ["sounddevice>=0.4.6", "faster-whisper>=1.0"]
 # Voice: natural offline neural TTS (falls back to macOS `say` / espeak-ng when absent)
 voice = ["ptts>=0.7", "sounddevice>=0.4.6"]
-# Optional small local LLM for richer dialogue (memory-grounded)
-llm = ["llama-cpp-python>=0.3"]
+# Language cortex: a local LLM that understands natural speech (see README)
+llm = ["llama-cpp-python>=0.3.38"]
 dev = ["pytest>=8"]
 eval = ["scikit-learn>=1.4", "scipy>=1.11", "matplotlib>=3.8"]
 all = ["the-machine[ears,voice,llm]"]

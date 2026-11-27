@@ -37,6 +37,7 @@ class PrototypeMemory:
     def __init__(self, store: Store, cfg: MemoryConfig, modality: str):
         self.store, self.cfg, self.modality = store, cfg, modality
         self.reload()
+
     def reload(self) -> None:
         rows = self.store.q("SELECT * FROM prototypes WHERE modality=? ORDER BY id", (self.modality,))
         self.ids = np.array([r["id"] for r in rows], dtype=np.int64)
@@ -60,6 +61,7 @@ class PrototypeMemory:
         t = self.sim_mean - c.spread_k * std
         t = np.where(self.n >= 3, t, c.tau_known)          # not enough evidence yet
         return np.clip(t, c.tau_min, c.tau_max)
+
     def recognize(self, x: np.ndarray) -> Recognition:
         if len(self) == 0:
             return Recognition(None, 0.0, self.cfg.tau_known, 0.0, False)
@@ -74,6 +76,7 @@ class PrototypeMemory:
 
     def recognize_batch(self, X: np.ndarray) -> list[Recognition]:
         return [self.recognize(x) for x in X]
+
     def learn(self, x: np.ndarray, concept_id: int) -> int:
         """Absorb one labelled sample. Returns the prototype id that absorbed it."""
         x = l2n(np.asarray(x, np.float32))

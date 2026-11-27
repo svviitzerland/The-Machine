@@ -5,6 +5,7 @@ with fake faces and plain text.
 """
 from __future__ import annotations
 
+import queue
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -52,7 +53,7 @@ class Assertion:
 
 class Mind:
     def __init__(self, cfg: Config, store: Store, say: Callable[[str], None],
-                 face_engine=None, object_encoder=None, llm=None, self_training: bool = True):
+                 face_engine=None, object_encoder=None, cortex=None, self_training: bool = True):
         self.cfg, self.store, self._say = cfg, store, say
         # Voice.say takes a speaking rate; plain sinks like print or list.append don't.
         self._say_rate = getattr(say, "__func__", None) is not None and "rate" in say.__func__.__code__.co_varnames
@@ -67,7 +68,10 @@ class Mind:
         self.drives = Drives(cfg.mind)
         self.ws = Workspace(cfg.mind.habituation_s)
         self.ws.subscribe(self._act)
-        self.face_engine, self.obj_enc, self.llm = face_engine, object_encoder, llm
+        self.face_engine, self.obj_enc, self.cortex = face_engine, object_encoder, cortex
+        self._thoughts: queue.Queue = queue.Queue()
+        self.thinking = 0                  # utterances the cortex is still working on
+        self._capture: list[str] | None = None
         self.self_training = self_training
         from ..perception.vision import Tracker
         self.tracker = Tracker(cfg.vision)
@@ -82,14 +86,21 @@ class Mind:
         self.thought = "..."
         self.sleeping = False
         self.metrics = {"frames": 0, "embeds": 0, "detect_ms": 0.0, "embed_ms": 0.0}
+
     @property
     def stage(self) -> int:
         return stage_of(len(self.faces.concepts()) + len(self.objects.concepts()), self.lex.vocabulary_size())
 
     def speak(self, key: str, **kw) -> None:
+        if self._capture is not None:      # the cortex is talking; just note what happened
+            self._capture.append(key)
+            return
         stage = self.stage
         self.mood = mood_for(key, self.drives.curiosity, self.drives.energy)
         text, rate = self.persona.style(self.lang.say(key, stage, **kw), self.mood, stage)
+        self._utter(text, rate)
+
+    def _utter(self, text: str, rate: float) -> None:
         self.thought = text
         self.store.add_episode("say", text=text, salience=0.3)
         if self._say_rate:
@@ -113,6 +124,7 @@ class Mind:
         """Who is talking: the largest (closest) face in view."""
         v = self.visible()
         return v[0] if v else None
+
     def see(self, frame: np.ndarray, now: float | None = None) -> None:
         now = now or time.time()
         self.frame = frame
@@ -175,13 +187,22 @@ class Mind:
         self._last_store[t.id] = now
         self.store.add_episode("see", modality="face", concept_id=t.concept_id if t.known else None,
                                vec=m, salience=0.6 if t.known else 0.5)
+
     def hear(self, text: str) -> None:
         self.store.add_episode("hear", text=text, salience=0.6)
         self.drives.interacted()
         self.ws.post(Signal(1.0, "speech", "", {"text": text}, "ears"))
+
     def tick(self) -> Signal | None:
         if self.sleeping:
             return None
+        while not self._thoughts.empty():
+            thought, said = self._thoughts.get()
+            self.thinking -= 1
+            if thought is None:
+                self._understand_by_rules(said)
+            else:
+                self._carry_out(thought, said)
         self.drives.tick(len(self.tracker.tracks))
         now = time.time()
         if self.drives.sleepy:
@@ -195,6 +216,7 @@ class Mind:
                                         {"cid": c["id"], "k": c["seen_count"], "track": t.id}, "drives"))
                     break
         return self.ws.step()
+
     def _act(self, s: Signal) -> None:
         now = time.time()
         if s.kind == "greet":
@@ -214,7 +236,19 @@ class Mind:
             self.speak("sleepy")
         elif s.kind == "speech":
             self._understand(s.payload["text"])
+
     def _understand(self, text: str) -> None:
+        in_view = [t.concept_id for t in self.visible() if t.known and t.concept_id]
+        self.lex.observe(text, in_view)
+        if self.cortex is not None:
+            self.thought = "..."
+            self.thinking += 1
+            self.cortex.think(self.situation(), self.history(), text,
+                              lambda thought, said: self._thoughts.put((thought, said)))
+            return
+        self._understand_by_rules(text)
+
+    def _understand_by_rules(self, text: str) -> None:
         it = self.lang.parse(text)
         # a bare answer to "who are you?" is a name
         if it.kind == "chat" and self.awaiting and time.time() - self.awaiting[1] < 15 \
@@ -223,6 +257,7 @@ class Mind:
         self.awaiting = None
         h = getattr(self, f"_on_{it.kind}", None)
         (h or self._on_chat)(it)
+
     def _teach_face(self, track, name: str, first_person: bool) -> None:
         name = name.strip().title()
         existing = self.store.find_concept(name, "person")
@@ -289,6 +324,7 @@ class Mind:
             self.store.add_episode("learn", modality="object", concept_id=p.concept_id, vec=v,
                                    salience=0.9, exemplar=True, source="teacher")
             p.absorbed += 1
+
     def _on_who_am_i(self, it: Intent) -> None:
         t = self.speaker()
         if t is None:
@@ -314,6 +350,7 @@ class Mind:
         else:
             self.awaiting = ("other", time.time())
             self.speak("ask_name")
+
     def _object_vec(self) -> np.ndarray | None:
         if self.frame is None or self.obj_enc is None:
             return None
@@ -352,6 +389,7 @@ class Mind:
             self.awaiting = ("object", time.time())
             self.last = Assertion("object", None, None, [v])
             self.speak("obj_unknown")
+
     def _on_positive(self, it: Intent) -> None:
         a = self.last
         if a and a.concept_id is not None:
@@ -384,6 +422,7 @@ class Mind:
                                                       self.speaker())
             if t:
                 self._teach_face(t, word, False)
+
     def _on_who_are_you(self, it: Intent) -> None:
         self.speak("i_am", me=self.cfg.name)
 
@@ -441,28 +480,89 @@ class Mind:
         self.speak("bye", n=self.name_of(t.concept_id) if t and t.known else "")
 
     def _on_chat(self, it: Intent) -> None:
-        # anything said is word-learning evidence for whatever is in view
-        in_view = [t.concept_id for t in self.visible() if t.known and t.concept_id]
-        self.lex.observe(it.text, in_view)
-        if self.llm is not None:
-            try:
-                reply = self.llm.reply(it.text, self.context_summary())
-                if reply:
-                    self.thought = reply
-                    self.store.add_episode("say", text=reply, salience=0.3)
-                    return self._say(reply)
-            except Exception:
-                pass
         words = self.lang.content_words(it.text)
         self.speak("confused", w=words[-1] if words else "")
 
-    def context_summary(self) -> str:
-        people = [self.name_of(t.concept_id) for t in self.visible() if t.known]
-        facts = self.store.q("SELECT subject, object FROM facts ORDER BY ts DESC LIMIT 8")
-        return (f"I am {self.cfg.name}, an AI who learns from my teacher. "
-                f"I see: {', '.join(p for p in people if p) or 'nobody I know'}. "
-                f"I know: {'; '.join(f'{r[0]} is {r[1]}' for r in facts) or 'little yet'}. "
-                f"Stage: {STAGE_NAMES[self.stage]}.")
+    # Cortex actions map onto the same handlers the language pack uses.
+    _ACTION_INTENT = {
+        "learn_my_name": ("name_me", "name"), "learn_other_person": ("name_other", "name"),
+        "learn_object": ("name_object", "name"), "correct_last": ("correct", "name"),
+        "confirm_last": ("positive", None), "forget_person": ("forget", "name"),
+    }
+    _BLOCKING = {"no_face", "no_vision", "not_allowed"}
+
+    def _carry_out(self, thought, said: str) -> None:
+        self._capture = []
+        sleep_after = False
+        try:
+            for a in thought.actions:
+                if a.name == "go_to_sleep":
+                    sleep_after = True
+                elif a.name == "remember_fact":
+                    self._on_fact(Intent("fact", a.args["subject"], a.args["fact"], said))
+                else:
+                    kind, arg = self._ACTION_INTENT[a.name]
+                    getattr(self, f"_on_{kind}")(Intent(kind, a.args.get(arg) if arg else None, None, said))
+        finally:
+            happened, self._capture = self._capture, None
+        blocked = next((k for k in happened if k in self._BLOCKING), None)
+        if blocked or not thought.reply:
+            self.speak(blocked or (happened[-1] if happened else "confused"), w="", n="", me=self.cfg.name)
+        else:
+            key = happened[-1] if happened else "calm"
+            self.mood = mood_for(key, self.drives.curiosity, self.drives.energy)
+            _, rate = self.persona.style("", self.mood, 2)
+            self._utter(thought.reply, rate)
+        if sleep_after:
+            self.sleep()
+
+    def situation(self) -> str:
+        """What the Machine knows right now, written for the language cortex."""
+        lines = [f"You are {self.persona.name}, an AI that lives in a camera and a microphone and "
+                 f"learns everything from the people who talk to you. {self.persona.description}"]
+        stage = STAGE_NAMES[self.stage]
+        lines.append({"newborn": "You are a newborn: you know almost nothing yet. Speak in very short, simple "
+                                 "sentences and sound amazed by new things.",
+                      "child": "You are still young: you speak simply and ask many questions.",
+                      "grown": "You have learned a lot: you speak naturally."}[stage])
+        admin = self.ethics.admin_id
+        seen = []
+        for i, t in enumerate(self.visible()):
+            who = "the person speaking to you" if i == 0 else "another person"
+            c = self.store.concept(t.concept_id) if t.known and t.concept_id else None
+            if c and c["name"]:
+                rel = ", your maker" if c["id"] == admin else ""
+                seen.append(f"{who}: {c['name']}{rel} (you have seen them {c['seen_count']} times)")
+            elif c:
+                seen.append(f"{who}: someone you have seen {c['seen_count']} times but whose name you don't know")
+            else:
+                seen.append(f"{who}: someone you don't recognize")
+        lines.append("Right now you see " + ("; ".join(seen) if seen else "nobody") + ".")
+        v = self._object_vec()
+        if v is not None and len(self.objects):
+            r = self.objects.recognize(v)
+            if r.known:
+                lines.append(f"The thing in the middle of your view looks like a {self.name_of(r.concept_id)}.")
+        people = [r["name"] for r in self.store.q(
+            "SELECT name FROM concepts WHERE kind='person' AND name IS NOT NULL ORDER BY last_seen DESC LIMIT 12")]
+        things = [r["name"] for r in self.store.q(
+            "SELECT name FROM concepts WHERE kind='object' AND name IS NOT NULL ORDER BY last_seen DESC LIMIT 12")]
+        facts = [f"{r['subject']} is {r['object']}" for r in self.store.q(
+            "SELECT subject, object FROM facts ORDER BY ts DESC LIMIT 12")]
+        lines.append("People you know: " + (", ".join(people) or "nobody yet, the first person you learn "
+                                             "becomes your maker") + ".")
+        lines.append("Things you know: " + (", ".join(things) or "nothing yet") + ".")
+        if facts:
+            lines.append("Facts you were taught: " + "; ".join(facts) + ".")
+        lines.append(f"You feel {self.mood}; curiosity {self.drives.curiosity:.0%}, energy {self.drives.energy:.0%}.")
+        return "\n".join(lines)
+
+    def history(self, turns: int = 6) -> list[tuple[str, str]]:
+        rows = self.store.q("SELECT kind, text FROM episodes WHERE kind IN ('hear','say') AND text IS NOT NULL "
+                            "ORDER BY ts DESC, id DESC LIMIT ?", (turns + 1,))
+        rows = list(reversed(rows))[:-1]       # the newest one is the utterance being answered
+        return [("user" if r["kind"] == "hear" else "assistant", r["text"]) for r in rows]
+
     def sleep(self) -> SleepReport:
         self.speak("sleep_start")
         self.sleeping = True
