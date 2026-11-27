@@ -25,9 +25,9 @@ python -m the_machine download   # once: eyes, ears, voice and brain
 python -m the_machine run
 ```
 
-No microphone? Run `python -m the_machine run --no-mic` and type instead.
+No microphone? Run `python -m the_machine run --no-mic` and type to it on the page.
 
-To look inside its mind, run `python -m the_machine mind` (or press `m` while it runs). A page opens in your browser with its memory as a map and its neural network, which you can zoom, move and hover. Type something there to see every layer work on it, token by token.
+`run` opens a page in your browser where you watch what it sees, talk to it, and look inside its mind: its memory as a map and its neural network, which you can zoom, move and hover. To look inside while it is not running, use `python -m the_machine mind`.
 
 ## How it works
 

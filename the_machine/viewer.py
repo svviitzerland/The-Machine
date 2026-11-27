@@ -69,9 +69,19 @@ def memory_graph(store, admin_id, name: str, active: set[int]) -> dict:
     return {"nodes": nodes, "edges": edges, "active": [f"c{a}" for a in active]}
 
 
+class Feed:
+    """What the running Machine shares with the page besides its Mind: the camera
+    frame, its ears and voice, and a way to type to it."""
+
+    def __init__(self, say=None, ears=None, speaking=None):
+        self.frame = None
+        self.fps = 0.0
+        self.say, self.ears, self.speaking = say, ears, speaking
+
+
 class Viewer:
-    def __init__(self, cfg, mind=None):
-        self.cfg, self.mind = cfg, mind
+    def __init__(self, cfg, mind=None, feed: Feed | None = None):
+        self.cfg, self.mind, self.feed = cfg, mind, feed
         self._backend = None
         self._load = threading.Lock()
         if mind is None:
@@ -114,7 +124,7 @@ class Viewer:
         b = getattr(self.mind.cortex, "backend", None) if self.live else self._backend
         path = None if b else find_model(Path(self.cfg.models_dir), self.cfg.mind.llm_models)
         tap = getattr(b, "tap", None) if b else None
-        return {"live": self.live, "model": b.name if b else (path.stem if path else None),
+        return {"live": self.live, "camera": bool(self.feed), "model": b.name if b else (path.stem if path else None),
                 "layers": tap.layers if tap else None, "width": tap.width if tap else None,
                 "loaded": bool(b), "watchable": tap is not None if b else None}
 
@@ -149,6 +159,52 @@ class Viewer:
                     "thinking": bool(self.mind.thinking), "text": b.recent[-160:]})
         return out
 
+    def state(self) -> dict:
+        """Everything the live view draws: who and what is in view, and what it is doing."""
+        m, f = self.mind, self.feed
+        frame = f.frame if f else None
+        h, w = frame.shape[:2] if frame is not None else (480, 640)
+        admin = m.ethics.admin_id
+        pending = m.pending
+        faces, things = [], []
+        try:
+            for t in list(m.tracker.tracks.values()):
+                c = m.store.concept(t.concept_id) if t.known and t.concept_id else None
+                kind = "unknown" if c is None else "maker" if c["id"] == admin else c["kind"]
+                faces.append({"id": t.id, "box": [float(v) for v in t.box], "name": c["name"] if c else None,
+                              "kind": kind, "sim": round(float(t.sim), 2),
+                              "teaching": bool(pending and pending.kind == "face" and pending.track_id == t.id)})
+            finds = getattr(m.object_engine, "finds_objects", False)
+            for t in list(m.things.tracks.values()):
+                name = m.name_of(t.concept_id) if t.known else None
+                teaching = bool(pending and pending.kind == "object" and pending.track_id == t.id)
+                if name or finds or teaching:
+                    things.append({"id": t.id, "box": [float(v) for v in t.box], "name": name, "teaching": teaching})
+        except RuntimeError:                  # tracks changed while we read them; the next poll catches up
+            pass
+        ears = f.ears if f else None
+        speaking = bool(f and f.speaking and f.speaking.is_set())
+        status = ("thinking" if m.thinking else "speaking" if speaking else
+                  "hearing" if getattr(ears, "hearing", False) else
+                  "listening" if hasattr(ears, "level") else "typing")
+        return {"size": [w, h], "faces": faces, "things": things, "status": status,
+                "level": round(min(1.0, getattr(ears, "level", 0.0) / 3), 2),
+                "drives": m.drives.as_dict(), "fps": round(f.fps, 1) if f else 0}
+
+    def chat(self, n: int = 40) -> list[dict]:
+        rows = self._mind().store.q("SELECT id, ts, kind, text FROM episodes WHERE kind IN ('hear','say') "
+                                    "AND text IS NOT NULL ORDER BY ts DESC, id DESC LIMIT ?", (n,))
+        return [{"id": r["id"], "who": "you" if r["kind"] == "hear" else "it", "text": r["text"], "ts": r["ts"]}
+                for r in reversed(rows)]
+
+    def jpeg(self) -> bytes | None:
+        import cv2
+        frame = self.feed.frame if self.feed else None
+        if frame is None:
+            return None
+        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 78])
+        return buf.tobytes() if ok else None
+
     def idle(self) -> None:
         """Stop reading the network once nobody has asked for a while."""
         while True:
@@ -175,6 +231,7 @@ def handler(viewer: Viewer):
             self._send(json.dumps(obj).encode(), code=code)
 
         def do_GET(self):
+            self.path = self.path.split("?")[0]
             try:
                 if self.path in ("/", "/index.html"):
                     return self._send(PAGE.read_bytes(), "text/html; charset=utf-8")
@@ -184,12 +241,44 @@ def handler(viewer: Viewer):
                     return self._json(viewer.brain())
                 if self.path == "/api/live":
                     return self._json(viewer.live_frame())
+                if self.path == "/api/state" and viewer.live:
+                    return self._json(viewer.state())
+                if self.path == "/api/chat":
+                    return self._json(viewer.chat())
+                if self.path == "/api/video" and viewer.feed:
+                    return self._video()
                 self._json({"error": "not found"}, 404)
             except Exception as e:
                 self._json({"error": f"{type(e).__name__}: {e}"}, 500)
 
+        def _video(self):
+            """The camera as an MJPEG stream, which an <img> shows without any script."""
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            last = None
+            try:
+                while True:
+                    frame = viewer.feed.frame
+                    if frame is not None and frame is not last:
+                        last = frame
+                        jpg = viewer.jpeg()
+                        if jpg:
+                            self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                                             + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+                    time.sleep(1 / 20)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def do_POST(self):
             try:
+                if self.path == "/api/say" and viewer.feed and viewer.feed.say:
+                    n = int(self.headers.get("Content-Length", 0))
+                    text = json.loads(self.rfile.read(n) or b"{}").get("text", "").strip()[:400]
+                    if text:
+                        viewer.feed.say(text)
+                    return self._json({"ok": bool(text)})
                 if self.path == "/api/trace":
                     n = int(self.headers.get("Content-Length", 0))
                     text = json.loads(self.rfile.read(n) or b"{}").get("text", "").strip()[:400]
@@ -202,8 +291,9 @@ def handler(viewer: Viewer):
     return H
 
 
-def serve(cfg, mind=None, port: int = 7342, open_browser: bool = True, block: bool = False) -> str:
-    viewer = Viewer(cfg, mind)
+def serve(cfg, mind=None, feed: Feed | None = None, port: int = 7342, open_browser: bool = True,
+          block: bool = False) -> str:
+    viewer = Viewer(cfg, mind, feed)
     for p in range(port, port + 20):
         try:
             server = ThreadingHTTPServer(("127.0.0.1", p), handler(viewer))

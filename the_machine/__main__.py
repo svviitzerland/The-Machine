@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("command", nargs="?", default="run",
                     choices=["run", "chat", "mind", "sleep", "status", "bench", "download", "reset"])
     ap.add_argument("--no-mic", action="store_true", help="type instead of speaking")
-    ap.add_argument("--no-window", action="store_true", help="no camera preview window")
+    ap.add_argument("--no-browser", action="store_true", help="don't open the browser")
     ap.add_argument("--silent", action="store_true", help="print instead of speaking")
     ap.add_argument("--db", help="path to memory database")
     ap.add_argument("--json", action="store_true")
@@ -34,12 +34,12 @@ def main(argv: list[str] | None = None) -> None:
 
     if a.command == "run":
         from .app import run
-        run(cfg, use_mic=not a.no_mic, show=not a.no_window, silent=a.silent)
+        run(cfg, use_mic=not a.no_mic, browser=not a.no_browser, silent=a.silent)
     elif a.command == "chat":
         _chat(cfg, a.silent)
     elif a.command == "mind":
         from .viewer import serve
-        serve(cfg, block=True)
+        serve(cfg, open_browser=not a.no_browser, block=True)
     elif a.command == "download":
         from .perception import models
         for k, p in models.ensure(cfg.models_dir).items():

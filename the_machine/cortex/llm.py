@@ -10,13 +10,31 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import sys
 import threading
 from pathlib import Path
+
+
+def _quiet() -> None:
+    """llama.cpp writes its own log to stderr; keep only the errors."""
+    import ctypes
+    import llama_cpp
+    if getattr(_quiet, "cb", None):
+        return
+
+    @llama_cpp.llama_log_callback
+    def log(level, text, _):
+        if level >= 4:                       # GGML_LOG_LEVEL_ERROR
+            print(text.decode(errors="replace"), end="", file=sys.stderr)
+
+    _quiet.cb = log                           # keep a reference, or it is freed
+    llama_cpp.llama_log_set(log, ctypes.c_void_p(0))
 
 
 class LlamaBackend:
     def __init__(self, path: Path, n_ctx: int = 4096, gpu_layers: int = -1, threads: int | None = None):
         from llama_cpp import Llama
+        _quiet()
         from llama_cpp.llama_chat_format import Jinja2ChatFormatter
 
         self.name = Path(path).stem
