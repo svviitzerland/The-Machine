@@ -80,9 +80,10 @@ def describe(s: dict) -> str:
 def event(e: dict) -> str:
     """Something the Machine just noticed, as a short line in parentheses."""
     k = e["kind"]
+    made = f" {e['name']} made you." if e.get("maker") else ""
     text = {
-        "arrived": lambda: f"{e['name']}{', who made you,' if e.get('maker') else ''} just came into view.",
-        "stranger": lambda: "Someone you don't know is in front of you.",
+        "arrived": lambda: f"You notice {e['name']} walk up to you.{made} Nobody has spoken yet.",
+        "stranger": lambda: "You notice someone you don't know in front of you. Nobody has spoken yet.",
         "unnamed": lambda: f"The person you've seen {e['seen']} times without knowing their name is here again.",
         "left": lambda: f"{e['name']} just left.",
         "quiet": lambda: f"It has been quiet for {age(e['s'])}.",
