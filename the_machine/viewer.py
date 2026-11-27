@@ -73,10 +73,10 @@ class Feed:
     """What the running Machine shares with the page besides its Mind: the camera
     frame, its ears and voice, and a way to type to it."""
 
-    def __init__(self, say=None, ears=None, speaking=None):
+    def __init__(self, say=None, ears=None, speaking=None, head=None):
         self.frame = None
         self.fps = 0.0
-        self.say, self.ears, self.speaking = say, ears, speaking
+        self.say, self.ears, self.speaking, self.head = say, ears, speaking, head
 
 
 class Viewer:
@@ -189,7 +189,9 @@ class Viewer:
                   "listening" if hasattr(ears, "level") else "typing")
         return {"size": [w, h], "faces": faces, "things": things, "status": status,
                 "level": round(min(1.0, getattr(ears, "level", 0.0) / 3), 2),
-                "drives": m.drives.as_dict(), "fps": round(f.fps, 1) if f else 0}
+                "drives": m.drives.as_dict(), "fps": round(f.fps, 1) if f else 0,
+                "head": None if not (f and f.head) else {"connected": f.head.connected, "pan": round(f.head.pan),
+                                                         "tilt": round(f.head.tilt)}}
 
     def chat(self, n: int = 40) -> list[dict]:
         rows = self._mind().store.q("SELECT id, ts, kind, text FROM episodes WHERE kind IN ('hear','say') "

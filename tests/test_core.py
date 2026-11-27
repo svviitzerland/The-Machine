@@ -324,3 +324,35 @@ def test_reply_streams_sentence_by_sentence():
     s.finish()
     assert json.loads(heads[0].rstrip().rstrip(",") + "}")["actions"][0]["do"] == "go_to_sleep"
     assert sentences == ["Okay.", "I'll rest now!", 'Say "hi" when you\'re back?']
+
+
+def test_head_follows_the_person_it_sees():
+    import socket
+    from the_machine.body import Aim, Head
+    from the_machine.config import BodyConfig
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    cfg = BodyConfig(gain=1.0, send_hz=1000)
+    head = Head(f"127.0.0.1:{port}", cfg)
+    conn, _ = srv.accept()
+    for _ in range(100):
+        if head.connected:
+            break
+        time.sleep(0.01)
+    aim = Aim(cfg)
+    pan, tilt = aim.update((0, 200, 100, 100), 640, 480, time.time())     # someone at the camera's left edge
+    assert pan > 110 and abs(tilt - 90) < 15
+    head.look(pan, tilt)
+    conn.sendall(b"OK P115 T91\n")
+    assert conn.recv(64).decode().startswith(f"P{round(pan)} T{round(tilt)}")
+    for _ in range(100):
+        if head.pan == 115:
+            break
+        time.sleep(0.01)
+    assert head.pan == 115
+    head.close()
+    conn.close()
+    srv.close()

@@ -163,6 +163,7 @@
     <span>Curiosity</span><b class="c"><i id="d-curiosity"></i></b>
     <span>Social</span><b><i id="d-social"></i></b>
     <span>Energy</span><b><i id="d-energy"></i></b>
+    <span id="head-row" hidden>Head</span><span id="d-head" hidden></span>
   </div>
 </section>
 
@@ -669,6 +670,8 @@ async function pollState() {
     const bars = $('#meter').children, lv = s.status === 'hearing' || s.status === 'listening' ? s.level : 0;
     for (let i = 0; i < bars.length; i++) bars[i].style.height = (4 + Math.max(0, lv * 14 - Math.abs(i - 2.5) * 2)) + 'px';
     for (const k of ['curiosity', 'social', 'energy']) $('#d-' + k).style.width = (s.drives[k] * 100).toFixed(0) + '%';
+    $('#head-row').hidden = $('#d-head').hidden = !s.head;
+    if (s.head) $('#d-head').textContent = s.head.connected ? `pan ${s.head.pan}° · tilt ${s.head.tilt}°` : 'waiting…';
     $('#off').hidden = true;
   } catch { $('#off').hidden = false; }
 }

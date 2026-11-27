@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "author": "The Machine",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-s3-devkitc-1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-servo", "id": "pan", "top": -60, "left": 220, "attrs": { "horn": "double", "hornColor": "#f5b400" } },
+    { "type": "wokwi-servo", "id": "tilt", "top": 80, "left": 220, "attrs": { "horn": "single", "hornColor": "#4fd1c5" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "pan:PWM", "esp:4", "orange", [] ],
+    [ "pan:V+", "esp:5V", "red", [] ],
+    [ "pan:GND", "esp:GND.1", "black", [] ],
+    [ "tilt:PWM", "esp:5", "orange", [] ],
+    [ "tilt:V+", "esp:5V", "red", [] ],
+    [ "tilt:GND", "esp:GND.2", "black", [] ]
+  ],
+  "dependencies": {}
+}

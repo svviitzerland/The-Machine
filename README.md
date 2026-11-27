@@ -29,6 +29,10 @@ No microphone? Run `python -m the_machine run --no-mic` and type to it on the pa
 
 `run` opens a page in your browser where you watch what it sees, talk to it, and look inside its mind: its memory as a map and its neural network, which you can zoom, move and hover. To look inside while it is not running, use `python -m the_machine mind`.
 
+## A body
+
+`robot/head` is a head for it: an ESP32-S3 with two servos that turns to look at whoever it is talking to. You can try it in the Wokwi simulator before buying any parts. See [robot/head](robot/head).
+
 ## How it works
 
 ```mermaid

@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> None:
                     choices=["run", "chat", "mind", "sleep", "status", "bench", "download", "reset"])
     ap.add_argument("--no-mic", action="store_true", help="type instead of speaking")
     ap.add_argument("--no-browser", action="store_true", help="don't open the browser")
+    ap.add_argument("--body", help="host:port of its head, e.g. localhost:7351 for the Wokwi simulator")
     ap.add_argument("--silent", action="store_true", help="print instead of speaking")
     ap.add_argument("--db", help="path to memory database")
     ap.add_argument("--json", action="store_true")
@@ -32,6 +33,8 @@ def main(argv: list[str] | None = None) -> None:
         # Models are fetched once by `download`; after that the Machine never touches the network.
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
+    if a.body:
+        cfg.body.address = a.body
     if a.command == "run":
         from .app import run
         run(cfg, use_mic=not a.no_mic, browser=not a.no_browser, silent=a.silent)

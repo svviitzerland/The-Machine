@@ -95,12 +95,26 @@ class SpeechConfig:
 
 
 @dataclass
+class BodyConfig:
+    address: str | None = os.environ.get("MACHINE_BODY")  # host:port of the head, e.g. machine-head.local:7351
+    hfov: float = 60.0                     # camera field of view, degrees
+    vfov: float = 45.0
+    camera_on_head: bool = False           # True when the camera turns with the head
+    gain: float = 0.35                     # how much of the way to turn each frame
+    idle_s: float = 4.0                    # look ahead again after this long without a face
+    send_hz: float = 15.0                  # most commands per second sent to the head
+    pan_sign: int = 1                      # flip to -1 if the head turns the wrong way
+    tilt_sign: int = 1
+
+
+@dataclass
 class Config:
     name: str = "Machine"
     vision: VisionConfig = field(default_factory=VisionConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     mind: MindConfig = field(default_factory=MindConfig)
     speech: SpeechConfig = field(default_factory=SpeechConfig)
+    body: BodyConfig = field(default_factory=BodyConfig)
     models_dir: Path = ROOT / "models"
     save_thumbnails: bool = False          # off for privacy: keep embeddings, not face images
     headless: bool = bool(os.environ.get("MACHINE_HEADLESS"))

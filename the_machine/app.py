@@ -7,6 +7,7 @@ import threading
 import time
 
 from . import config as C
+from .body import Aim, Head
 from .core.mind import Mind
 from .cortex.llm import load_cortex
 from .memory.store import Store
@@ -44,7 +45,9 @@ def run(cfg: C.Config, use_mic: bool = True, browser: bool = True, silent: bool 
                 load_object_engine(cfg), cortex=cortex)
     ears = make_ears(cfg.speech, inbox.put, cfg.speech.language, prefer_mic=use_mic)
     cam = Camera(cfg.vision)
-    feed = Feed(say=inbox.put, ears=ears, speaking=speaking)
+    head = Head(cfg.body.address, cfg.body) if cfg.body.address else None
+    aim = Aim(cfg.body)
+    feed = Feed(say=inbox.put, ears=ears, speaking=speaking, head=head)
     url = serve(cfg, mind, feed, open_browser=browser and not cfg.headless)
     print(f"[machine] awake at {url}  voice={voice.backend}. Ctrl+C to stop.", file=sys.stderr)
     period = 1.0 / cfg.vision.fps_limit
@@ -60,6 +63,9 @@ def run(cfg: C.Config, use_mic: bool = True, browser: bool = True, silent: bool 
             if frame is not None:
                 mind.see(frame)
                 feed.frame = frame
+                if head:
+                    who = mind.speaker()
+                    head.look(*aim.update(who.box if who else None, frame.shape[1], frame.shape[0], time.time()))
             mind.tick()
             now = time.time()
             feed.fps = 0.9 * feed.fps + 0.1 / max(now - last, 1e-3)
@@ -69,6 +75,8 @@ def run(cfg: C.Config, use_mic: bool = True, browser: bool = True, silent: bool 
         pass
     finally:
         voice.close()
+        if head:
+            head.close()
         cam.close()
         ears.close()
         store.close()
