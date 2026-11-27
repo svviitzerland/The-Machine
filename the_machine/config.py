@@ -97,8 +97,10 @@ class SpeechConfig:
 @dataclass
 class BodyConfig:
     address: str | None = os.environ.get("MACHINE_BODY")  # host:port of the head, e.g. machine-head.local:7351
-    hfov: float = 60.0                     # camera field of view, degrees
+    hfov: float = 60.0                     # camera field of view, degrees (when the camera is on the head)
     vfov: float = 45.0
+    reach_pan: float = 120.0               # with a camera that stays put: degrees of pan across the whole picture
+    reach_tilt: float = 80.0               # and of tilt from top to bottom
     camera_on_head: bool = False           # True when the camera turns with the head
     gain: float = 0.35                     # how much of the way to turn each frame
     idle_s: float = 4.0                    # look ahead again after this long without a face

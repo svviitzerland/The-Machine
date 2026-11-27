@@ -91,8 +91,8 @@ class Aim:
                 self.pan += c.pan_sign * c.gain * dx * c.hfov
                 self.tilt += c.tilt_sign * c.gain * dy * c.vfov
             else:                                            # the camera stays put: point straight at them
-                self.pan += (90 + c.pan_sign * dx * c.hfov - self.pan) * c.gain
-                self.tilt += (90 + c.tilt_sign * dy * c.vfov - self.tilt) * c.gain
+                self.pan += (90 + c.pan_sign * dx * c.reach_pan - self.pan) * c.gain
+                self.tilt += (90 + c.tilt_sign * dy * c.reach_tilt - self.tilt) * c.gain
             self.last_seen = now
         elif now - self.last_seen > c.idle_s:                # nobody here: slowly look ahead again
             self.pan += (90 - self.pan) * 0.05
