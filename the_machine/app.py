@@ -11,6 +11,7 @@ import cv2
 from . import config as C
 from .core.mind import Mind
 from .hud import Hud
+from .mindview import MindView
 from .cortex.llm import load_cortex
 from .memory.store import Store
 from .perception import models
@@ -47,7 +48,9 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
     ears = make_ears(cfg.speech, inbox.put, cfg.speech.language, prefer_mic=use_mic)
     cam = Camera(cfg.vision)
     hud = Hud()
-    print(f"[machine] awake. voice={voice.backend}. Type or speak. Ctrl+C to stop.", file=sys.stderr)
+    mind_view, show_mind = MindView(), False
+    print(f"[machine] awake. voice={voice.backend}. Type or speak. Press m to see its mind, q to stop.",
+          file=sys.stderr)
     period = 1.0 / cfg.vision.fps_limit
     last, fps = time.time(), 0.0
     try:
@@ -67,8 +70,15 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
             last = now
             if show and frame is not None and not cfg.headless:
                 cv2.imshow("THE MACHINE", hud.draw(frame, mind, fps, ears, speaking.is_set()))
-                if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                if show_mind:
+                    cv2.imshow("MIND", mind_view.draw(mind))
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("q"), 27):
                     break
+                if key == ord("m"):
+                    show_mind = not show_mind
+                    if not show_mind:
+                        cv2.destroyWindow("MIND")
             time.sleep(max(0.0, period - (time.time() - t0)))
     except KeyboardInterrupt:
         pass
