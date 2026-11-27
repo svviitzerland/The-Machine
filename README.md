@@ -27,7 +27,7 @@ python -m the_machine run
 
 No microphone? Run `python -m the_machine run --no-mic` and type instead.
 
-While it runs, press `m` to see its memory as a map, and `n` to watch its neural network think, layer by layer.
+To look inside its mind, run `python -m the_machine mind` (or press `m` while it runs). A page opens in your browser with its memory as a map and its neural network, which you can zoom, move and hover. Type something there to see every layer work on it, token by token.
 
 ## How it works
 
@@ -69,6 +69,7 @@ python eval/cortex_eval.py models/<model>.gguf
 |---|---|
 | `run` | Start with camera, microphone and voice |
 | `chat` | Text only, no camera |
+| `mind` | Look inside: its memory and its neural network |
 | `status` | Show what it knows |
 | `sleep` | Organize memory now |
 | `bench` | Measure speed and memory use on your computer |

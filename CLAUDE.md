@@ -21,7 +21,7 @@ uv venv && uv pip install -e ".[dev]"     # setup
 - **Memory changes only through actions.** The cortex changes memory only through the actions in `cortex/cortex.py`, and a name is only stored if it was really said. Things the Machine notices on its own never teach it.
 - **`Mind` stays I/O-free.** Camera, microphone, TTS and display belong in `app.py` and `perception/`. This keeps `Mind` testable with fakes (see `tests/test_core.py::FakeFaces`).
 - **All tunable numbers go in `config.py`.** Don't scatter magic numbers through the code.
-- **No network at runtime.** Only `perception/models.py` (the one-time download) and `bench.py` (the sample image) may touch the network.
+- **No network at runtime.** Only `perception/models.py` (the one-time download) and `bench.py` (the sample image) may touch the network. The viewer (`viewer.py`) listens on 127.0.0.1 only.
 - **Privacy.** Store embeddings, not images. Never commit `data/`, `*.db` or model weights.
 - **Minimal hardware is a feature.** Core dependencies are only `numpy`, `opencv-python` and `psutil`. Anything heavier goes in an optional extra in `pyproject.toml` and needs a graceful fallback.
 - **Measure, don't claim.** A performance statement in README or docs must come from `bench` output.

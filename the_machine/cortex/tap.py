@@ -35,6 +35,7 @@ class Tap:
         self.on = False
         self.every, self._k, self._take = every, 0, False   # read one token in `every`: reading stalls the GPU
         self.tokens = 0                      # tokens seen while watching
+        self.log: list[np.ndarray] | None = None   # every frame, while tracing
         self.frame = np.zeros((self.layers, self.width), np.float32)
         self._next = np.zeros_like(self.frame)
         self._lock = threading.Lock()
@@ -62,8 +63,59 @@ class Tap:
             with self._lock:
                 self.frame = self._next.copy()
                 self.tokens += 1
+                if self.log is not None:
+                    self.log.append(self.frame)
         return True
 
     def read(self) -> tuple[np.ndarray, int]:
         with self._lock:
             return self.frame, self.tokens
+
+
+def pool(frame: np.ndarray, groups: int) -> tuple[np.ndarray, np.ndarray]:
+    """Each layer's neurons in `groups` blocks: the strongest |activation| in each block and which neuron it was."""
+    layers, width = frame.shape
+    g = width // groups
+    blocks = np.abs(frame[:, :g * groups]).reshape(layers, groups, g)
+    arg = blocks.argmax(-1)
+    return blocks.max(-1), arg + np.arange(groups)[None, :] * g
+
+
+def trace(backend, messages: list[dict], said: str, max_new: int = 48, groups: int = 64) -> dict:
+    """Run the cortex on one turn and keep every layer's activity for every token
+    of what was said and of what it answers."""
+    from .cortex import SCHEMA
+    llm, tap = backend.llm, backend.tap
+    prompt = backend.fmt(messages=messages, enable_thinking=False).prompt
+    tokens = llm.tokenize(prompt.encode(), special=True)
+    cut = prompt.rfind(said)
+    head = llm.tokenize(prompt[:cut].encode(), special=True) if cut > 0 else tokens[:-24]
+    if tokens[:len(head)] != head:
+        head = tokens[:-24]
+    rest = tokens[len(head):]
+    out: list[int] = []
+    with backend.lock:
+        old = tap.on, tap.every
+        try:
+            llm.reset()
+            tap.on = False
+            llm.eval(head)
+            tap.on, tap.every, tap.log = True, 1, []
+            for t in rest[:-1]:
+                llm.eval([t])
+            for t in llm.generate(rest[-1:], top_k=40, top_p=0.9, temp=0.6, repeat_penalty=1.05, reset=False,
+                                  grammar=backend._grammar(SCHEMA)):
+                if t == llm.token_eos() or len(out) >= max_new:
+                    break
+                out.append(t)
+            frames = tap.log
+        finally:
+            tap.on, tap.every = old
+            tap.log = None
+            llm.reset()
+    ids = (rest + out)[:len(frames)]
+    words = [llm.detokenize([t], special=True).decode(errors="replace") for t in ids]
+    act, idx = zip(*(pool(f, groups) for f in frames)) if frames else ((), ())
+    return {"tokens": words, "said": len(rest), "layers": tap.layers, "width": tap.width, "groups": groups,
+            "act": [np.round(a, 3).tolist() for a in act], "idx": [i.tolist() for i in idx],
+            "reply": llm.detokenize(out).decode(errors="replace")}

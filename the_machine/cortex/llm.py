@@ -10,6 +10,7 @@ from __future__ import annotations
 import atexit
 import json
 import os
+import threading
 from pathlib import Path
 
 
@@ -28,6 +29,7 @@ class LlamaBackend:
         self._grammars: dict[str, object] = {}
         self.layers = int(self.llm.metadata.get(f"{self.llm.metadata.get('general.architecture')}.block_count", 0))
         self.recent = ""                     # the tail of what it is writing, for the brain view
+        self.lock = threading.Lock()          # one generation at a time
         try:
             from .tap import Tap
             self.tap = Tap(self.llm)
@@ -50,15 +52,17 @@ class LlamaBackend:
                                           stream=stream)
 
     def chat(self, messages: list[dict], schema: dict, max_tokens: int = 200) -> str:
-        return self._complete(messages, schema, max_tokens, False)["choices"][0]["text"]
+        with self.lock:
+            return self._complete(messages, schema, max_tokens, False)["choices"][0]["text"]
 
     def stream(self, messages: list[dict], schema: dict, max_tokens: int, on_text) -> str:
         raw = ""
-        for chunk in self._complete(messages, schema, max_tokens, True):
-            piece = chunk["choices"][0]["text"]
-            raw += piece
-            self.recent = (self.recent + piece)[-300:]
-            on_text(piece)
+        with self.lock:
+            for chunk in self._complete(messages, schema, max_tokens, True):
+                piece = chunk["choices"][0]["text"]
+                raw += piece
+                self.recent = (self.recent + piece)[-300:]
+                on_text(piece)
         return raw
 
 
