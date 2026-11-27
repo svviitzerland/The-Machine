@@ -54,7 +54,8 @@
   /* network composer */
   .composer { left: 50%; bottom: 16px; transform: translateX(-50%); width: min(820px, calc(100vw - 120px)); padding: 10px;
               border-radius: 16px; display: flex; flex-direction: column; gap: 8px; }
-  .tokens { display: flex; gap: 4px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; }
+  .tokens { display: flex; gap: 4px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
+  .tokens::-webkit-scrollbar { display: none; }
   .tok { flex: none; font: 12px var(--mono); padding: 3px 6px 5px; border-radius: 6px; background: var(--card-2); color: var(--muted);
          cursor: pointer; white-space: pre; position: relative; border: 1px solid transparent; }
   .tok::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: 2px; height: 2px; border-radius: 2px;
@@ -500,6 +501,9 @@ function renderTokens() {
   box.appendChild(frag);
 }
 $('#tokens').addEventListener('pointerover', e => { const i = e.target.dataset?.i; if (i !== undefined && !N.playing) select(+i, false); });
+$('#tokens').addEventListener('wheel', e => {          // a normal scroll wheel moves the row sideways
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); $('#tokens').scrollLeft += e.deltaY; }
+}, { passive: false });
 $('#tokens').addEventListener('click', e => { const i = e.target.dataset?.i; if (i !== undefined) select(+i); });
 
 function select(t, scroll = true) {
