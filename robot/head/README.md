@@ -1,6 +1,6 @@
 # Head
 
-The Machine's first body: an ESP32-S3 with two servos that turns to look at whoever it is talking to. The laptop stays the brain; the head joins your WiFi and The Machine talks to it there.
+The Machine's first body: an ESP32 with two servos that turns to look at whoever it is talking to. The laptop stays the brain; the head joins your WiFi and The Machine talks to it there.
 
 ## Try it in the simulator
 
@@ -17,12 +17,12 @@ Move in front of your webcam and the servos follow you.
 
 ## The real head
 
-Parts: an ESP32-S3 DevKitC-1, two SG90 servos, a pan-tilt bracket and a USB webcam.
+Parts: an ESP32 DevKitC V4 (or any ESP32 dev board), two SG90 servos, a pan-tilt bracket and a USB webcam.
 
 | Servo | Signal | Power |
 |---|---|---|
-| pan (left and right) | GPIO 4 | 5V, GND |
-| tilt (up and down) | GPIO 5 | 5V, GND |
+| pan (left and right) | GPIO 18 | 5V, GND |
+| tilt (up and down) | GPIO 19 | 5V, GND |
 
 Copy `src/secrets.example.h` to `src/secrets.h`, fill in your WiFi, then flash it:
 

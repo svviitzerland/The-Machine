@@ -1,8 +1,8 @@
 #pragma once
 
 // Wiring
-#define PAN_PIN 4
-#define TILT_PIN 5
+#define PAN_PIN 18
+#define TILT_PIN 19
 
 // How far each servo may turn, in degrees (90 looks straight ahead)
 #define PAN_MIN 10

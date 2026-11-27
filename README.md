@@ -31,7 +31,7 @@ No microphone? Run `python -m the_machine run --no-mic` and type to it on the pa
 
 ## A body
 
-`robot/head` is a head for it: an ESP32-S3 with two servos that turns to look at whoever it is talking to. You can try it in the Wokwi simulator before buying any parts. See [robot/head](robot/head).
+`robot/head` is a head for it: an ESP32 with two servos that turns to look at whoever it is talking to. You can try it in the Wokwi simulator before buying any parts. See [robot/head](robot/head).
 
 ## How it works
 
