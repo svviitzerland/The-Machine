@@ -16,6 +16,8 @@ Servo pan, tilt;
 WiFiServer server(PORT);
 WiFiClient client;
 String fromSerial, fromClient;
+bool moving = false;
+unsigned long lastLog = 0;
 
 float panNow = 90, tiltNow = 90, panGoal = 90, tiltGoal = 90, speed = SPEED;
 unsigned long lastStep = 0, lastWifiTry = 0;
@@ -25,7 +27,7 @@ void report(Print &out) {
   out.printf("OK P%.0f T%.0f\n", panGoal, tiltGoal);
 }
 
-void handle(String cmd, Print &out) {
+void handle(String cmd, Print &out, const char *from) {
   cmd.trim();
   cmd.toUpperCase();
   if (cmd.isEmpty()) return;
@@ -40,14 +42,18 @@ void handle(String cmd, Print &out) {
     if (c == 'S') speed = constrain(v, 10, 1000);
     i = end + 1;
   }
+  if (millis() - lastLog > 250) {                        // at most four lines a second
+    lastLog = millis();
+    Serial.printf("<- %-12s from %s  goal P%.0f T%.0f\n", cmd.c_str(), from, panGoal, tiltGoal);
+  }
   report(out);
 }
 
-void readLines(Stream &in, String &buf, Print &out) {
+void readLines(Stream &in, String &buf, Print &out, const char *from) {
   while (in.available()) {
     char c = in.read();
     if (c == '\n' || c == '\r') {
-      handle(buf, out);
+      handle(buf, out, from);
       buf = "";
     } else if (buf.length() < 64) {
       buf += c;
@@ -88,14 +94,39 @@ void step() {
   tiltNow += constrain(tiltGoal - tiltNow, -most, most);
   pan.write(round(panNow));
   tilt.write(round(tiltNow));
+  bool still = fabs(panGoal - panNow) < 0.5 && fabs(tiltGoal - tiltNow) < 0.5;
+  if (moving && still) Serial.printf("   at P%.0f T%.0f\n", panNow, tiltNow);
+  moving = !still;
+}
+
+// Turn left and right, up and down once, so you can see the servos work.
+void selfTest() {
+  const float moves[][2] = {{40, 90}, {140, 90}, {90, 60}, {90, 120}, {90, 90}};
+  for (auto &m : moves) {
+    panGoal = m[0];
+    tiltGoal = m[1];
+    Serial.printf("test: P%.0f T%.0f\n", panGoal, tiltGoal);
+    while (fabs(panGoal - panNow) > 0.5 || fabs(tiltGoal - tiltNow) > 0.5) {
+      step();
+      delay(5);
+    }
+    delay(150);
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-  pan.attach(PAN_PIN, 500, 2400);
-  tilt.attach(TILT_PIN, 500, 2400);
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  pan.setPeriodHertz(50);
+  tilt.setPeriodHertz(50);
+  int a = pan.attach(PAN_PIN, 500, 2400), b = tilt.attach(TILT_PIN, 500, 2400);
+  Serial.printf("servos: pan on GPIO %d %s, tilt on GPIO %d %s\n", PAN_PIN, a >= 0 ? "ok" : "FAILED",
+                TILT_PIN, b >= 0 ? "ok" : "FAILED");
   pan.write(90);
   tilt.write(90);
+  lastStep = millis();
+  selfTest();
   Serial.println("machine-head ready");
   connectWifi();
 }
@@ -112,10 +143,11 @@ void loop() {
       client = server.accept();
       client.setNoDelay(true);
       client.println("HELLO machine-head 1");
+      Serial.printf("client connected from %s\n", client.remoteIP().toString().c_str());
       report(client);
     }
-    if (client && client.connected()) readLines(client, fromClient, client);
+    if (client && client.connected()) readLines(client, fromClient, client, "wifi");
   }
-  readLines(Serial, fromSerial, Serial);
+  readLines(Serial, fromSerial, Serial, "usb");
   step();
 }
