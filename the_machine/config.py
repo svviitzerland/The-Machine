@@ -107,6 +107,10 @@ class BodyConfig:
     send_hz: float = 15.0                  # most commands per second sent to the head
     pan_sign: int = 1                      # flip to -1 if the head turns the wrong way
     tilt_sign: int = 1
+    alive_deg: float = 2.5                 # how much it drifts while looking at someone
+    search_deg: float = 45.0               # how far it looks around when nobody is there
+    glance_every_s: tuple = (5.0, 10.0)    # with more than one person, glance at another this often
+    glance_s: tuple = (1.0, 2.0)           # for this long
 
 
 @dataclass

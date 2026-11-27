@@ -85,6 +85,7 @@
   .stage { position: absolute; border-radius: 16px; overflow: hidden; background: #000; border: 1px solid var(--line); }
   .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
   .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .stage.can-look canvas { cursor: crosshair; }
   .stage .off { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
   .chat { right: 16px; top: 72px; bottom: 16px; width: 320px; display: flex; flex-direction: column; overflow: hidden; }
   .chat h3 { margin: 0; padding: 14px 16px 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
@@ -671,6 +672,7 @@ async function pollState() {
     for (let i = 0; i < bars.length; i++) bars[i].style.height = (4 + Math.max(0, lv * 14 - Math.abs(i - 2.5) * 2)) + 'px';
     for (const k of ['curiosity', 'social', 'energy']) $('#d-' + k).style.width = (s.drives[k] * 100).toFixed(0) + '%';
     $('#head-row').hidden = $('#d-head').hidden = !s.head;
+    $('#stage').classList.toggle('can-look', !!s.head?.connected);
     if (s.head) $('#d-head').textContent = s.head.connected ? `${s.head.pan}° / ${s.head.tilt}°` : 'waiting…';
     $('#off').hidden = true;
   } catch { $('#off').hidden = false; }
@@ -712,6 +714,14 @@ function drawLive() {
     pill(x, y - 30, o.name || (o.teaching ? 'Learning…' : 'Something new'), null, col);
   }
   for (const k of L.boxes.keys()) if (!seen.has(k)) L.boxes.delete(k);
+  if (L.ping) {                                       // where the head was told to look
+    const age = (performance.now() - L.ping.t) / 1000;
+    if (age > 1.2) L.ping = null;
+    else {
+      octx.strokeStyle = C.accent; octx.lineWidth = 2; octx.globalAlpha = 1 - age / 1.2;
+      octx.beginPath(); octx.arc(L.ping.x, L.ping.y, 8 + age * 30, 0, 6.283); octx.stroke(); octx.globalAlpha = 1;
+    }
+  }
 }
 
 function brackets(x, y, w, h, col, width, dashed) {
@@ -747,6 +757,13 @@ async function send() {
   catch { box.value = text; }
   setTimeout(pollChat, 150);
 }
+overlay.addEventListener('click', async e => {     // look where I click
+  if (!L.state?.head?.connected) return;
+  const r = overlay.getBoundingClientRect();
+  const x = 1 - (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;   // the picture is mirrored
+  L.ping = { x: e.clientX - r.left, y: e.clientY - r.top, t: performance.now() };
+  try { await fetch('/api/look', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ x, y }) }); } catch {}
+});
 $('#send').onclick = send;
 $('#talk').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
 

@@ -65,8 +65,11 @@ def run(cfg: C.Config, use_mic: bool = True, browser: bool = True, silent: bool 
                 mind.see(frame)
                 feed.frame = frame
                 if head:
-                    who = mind.speaker()
-                    head.look(*aim.update(who.box if who else None, frame.shape[1], frame.shape[0], time.time()))
+                    if feed.point:
+                        aim.look_at(*feed.point, time.time())
+                        feed.point = None
+                    boxes = [t.box for t in mind.visible()]
+                    head.look(*aim.update(boxes, frame.shape[1], frame.shape[0], time.time()))
             mind.tick()
             now = time.time()
             feed.fps = 0.9 * feed.fps + 0.1 / max(now - last, 1e-3)

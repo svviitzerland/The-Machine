@@ -77,6 +77,7 @@ class Feed:
         self.frame = None
         self.fps = 0.0
         self.say, self.ears, self.speaking, self.head = say, ears, speaking, head
+        self.point = None                     # a spot in the picture the head was asked to look at
 
 
 class Viewer:
@@ -275,6 +276,11 @@ def handler(viewer: Viewer):
 
         def do_POST(self):
             try:
+                if self.path == "/api/look" and viewer.feed:
+                    n = int(self.headers.get("Content-Length", 0))
+                    d = json.loads(self.rfile.read(n) or b"{}")
+                    viewer.feed.point = (min(max(float(d["x"]), 0), 1), min(max(float(d["y"]), 0), 1))
+                    return self._json({"ok": True})
                 if self.path == "/api/say" and viewer.feed and viewer.feed.say:
                     n = int(self.headers.get("Content-Length", 0))
                     text = json.loads(self.rfile.read(n) or b"{}").get("text", "").strip()[:400]

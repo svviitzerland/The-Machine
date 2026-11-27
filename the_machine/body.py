@@ -6,6 +6,8 @@ head should point. A real head and the Wokwi simulator look the same from here.
 """
 from __future__ import annotations
 
+import math
+import random
 import socket
 import threading
 import time
@@ -74,29 +76,53 @@ class Head:
 
 
 class Aim:
-    """Where the head should point to look at someone."""
+    """Where the head should point: at the person it is talking to, with the small
+    movements of something alive, a glance at anyone else now and then, and a slow
+    look around when nobody is there."""
 
     def __init__(self, cfg: BodyConfig):
         self.cfg = cfg
         self.pan = self.tilt = 90.0
         self.last_seen = 0.0
+        self.glance: tuple[int, float] | None = None      # (which face, until when)
+        self.next_glance = 0.0
+        self.point: tuple[float, float, float] | None = None   # (x, y, until): somewhere it was told to look
 
-    def update(self, box, frame_w: int, frame_h: int, now: float) -> tuple[float, float]:
+    def look_at(self, x: float, y: float, now: float, hold: float = 3.0) -> None:
+        """Look at a spot in the picture (0..1 from the top left) for a few seconds."""
+        self.point = (x, y, now + hold)
+
+    def update(self, boxes, frame_w: int, frame_h: int, now: float) -> tuple[float, float]:
         c = self.cfg
-        if box is not None:
-            x, y, w, h = box
-            dx = 0.5 - (x + w / 2) / frame_w                 # >0: they are to the camera's left
-            dy = 0.5 - (y + h * 0.4) / frame_h               # >0: above the middle (aim at the eyes)
-            if c.camera_on_head:                             # the camera turns with the head: nudge toward them
+        target = None
+        if self.point and now < self.point[2]:
+            target = self.point[:2]
+        elif boxes:
+            i = 0
+            if len(boxes) > 1:
+                if self.glance and now < self.glance[1]:
+                    i = min(self.glance[0], len(boxes) - 1)
+                elif now > self.next_glance:
+                    self.glance = (random.randrange(1, len(boxes)), now + random.uniform(*c.glance_s))
+                    self.next_glance = now + random.uniform(*c.glance_every_s)
+            x, y, w, h = boxes[i]
+            target = ((x + w / 2) / frame_w, (y + h * 0.4) / frame_h)   # aim at the eyes
+            self.last_seen = now
+        if target is not None:
+            dx, dy = 0.5 - target[0], 0.5 - target[1]       # >0: left of / above the middle of the picture
+            if c.camera_on_head:                             # the camera turns with the head: nudge toward it
                 self.pan += c.pan_sign * c.gain * dx * c.hfov
                 self.tilt += c.tilt_sign * c.gain * dy * c.vfov
-            else:                                            # the camera stays put: point straight at them
+            else:                                            # the camera stays put: point straight at it
                 self.pan += (90 + c.pan_sign * dx * c.reach_pan - self.pan) * c.gain
                 self.tilt += (90 + c.tilt_sign * dy * c.reach_tilt - self.tilt) * c.gain
-            self.last_seen = now
-        elif now - self.last_seen > c.idle_s:                # nobody here: slowly look ahead again
-            self.pan += (90 - self.pan) * 0.05
-            self.tilt += (90 - self.tilt) * 0.05
+        elif now - self.last_seen > c.idle_s:                # nobody here: look around slowly
+            self.pan += (90 + c.search_deg * math.sin(now * 0.35) - self.pan) * 0.05
+            self.tilt += (92 + 4 * math.sin(now * 0.23) - self.tilt) * 0.05
+        # never quite still: a slow, uneven drift like breathing and small eye movements
+        alive = c.alive_deg
+        wob_p = alive * (math.sin(now * 0.7) + 0.5 * math.sin(now * 1.9 + 1.3))
+        wob_t = alive * 0.6 * (math.sin(now * 0.9 + 0.4) + 0.4 * math.sin(now * 2.3))
         self.pan = min(max(self.pan, 0.0), 180.0)
         self.tilt = min(max(self.tilt, 0.0), 180.0)
-        return self.pan, self.tilt
+        return self.pan + wob_p, self.tilt + wob_t
