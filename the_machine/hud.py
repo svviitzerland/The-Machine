@@ -9,7 +9,6 @@ from collections import deque
 import cv2
 import numpy as np
 
-from .language.pack import STAGE_NAMES
 
 # BGR
 YELLOW = (0, 215, 255)
@@ -110,7 +109,6 @@ class Hud:
             self._face(out, mind, t, now)
         if mind.pending and mind.pending.kind == "object":
             self._object(out, now)
-        self._header(out, mind, now)
         self._status(out, mind, ears, speaking, now)
         self._drives(out, mind, fps)
         self._subtitles(out, now)
@@ -163,16 +161,6 @@ class Hud:
         p = int((math.sin(now * 2.5) * 0.5 + 0.5) * 10)
         brackets(img, x - p, y - p, bw + 2 * p, bh + 2 * p, YELLOW, 24)
         text(img, "LEARNING OBJECT", (x, y - 8), 0.42, YELLOW)
-
-    def _header(self, img, mind, now):
-        panel(img, 0, 0, 300, 52, 0.55)
-        on = int(now * 2) % 2 == 0
-        cv2.circle(img, (14, 18), 4, YELLOW if on else (0, 90, 110), -1, cv2.LINE_AA)
-        text(img, "THE MACHINE", (26, 23), 0.55, WHITE)
-        stamp = time.strftime("%H:%M:%S")
-        text(img, stamp, (300 - width(stamp, 0.42) - 10, 22), 0.42, GREY)
-        text(img, f"STAGE {STAGE_NAMES[mind.stage].upper()}   "
-                  f"{len(mind.faces.concepts())} PEOPLE  {len(mind.objects.concepts())} THINGS", (12, 42), 0.36, GREY)
 
     def _status(self, img, mind, ears, speaking, now):
         h, w = img.shape[:2]
