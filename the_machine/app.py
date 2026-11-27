@@ -68,6 +68,7 @@ def run(cfg: C.Config, use_mic: bool = True, browser: bool = True, silent: bool 
     except KeyboardInterrupt:
         pass
     finally:
+        voice.close()
         cam.close()
         ears.close()
         store.close()

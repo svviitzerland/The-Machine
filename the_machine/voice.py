@@ -64,6 +64,12 @@ class Voice:
                     self.on_end()
                 self._q.task_done()
 
+    def close(self) -> None:
+        """Stop talking now, so audio isn't cut off mid-buffer when the program ends."""
+        if self.backend == "phonon":
+            import sounddevice as sd
+            sd.stop()
+
     def wait(self) -> None:
         """Block until everything queued has been spoken."""
         self._q.join()

@@ -102,7 +102,7 @@ class Mind:
         self._last_store: dict[int, float] = {}
         self._last_self_train: dict[int, float] = {}
         self._last_exchange = self._last_muse = time.time()
-        self._last_ask = self._last_tired = 0.0
+        self._last_ask = self._last_tired = self._last_stranger = 0.0
         self.thought = ""
         self.sleeping = False
         self.metrics = {"frames": 0, "embeds": 0, "detect_ms": 0.0, "embed_ms": 0.0, "objects_ms": 0.0}
@@ -171,7 +171,10 @@ class Mind:
         cid, _ = t.votes.most_common(1)[0]
         t.concept_id = None if cid == -1 else cid
         t.known, t.sim = cid != -1, r.sim
-        if sum(t.votes.values()) >= 3 and not t.announced:
+        votes = sum(t.votes.values())
+        # A known face is announced quickly. Calling someone a stranger takes more sightings,
+        # because a known face turned away or badly lit also looks unknown for a moment.
+        if not t.announced and (t.known and votes >= 3 or not t.known and votes >= self.cfg.mind.stranger_votes):
             t.announced = True
             name = self.name_of(t.concept_id) if t.known else None
             if t.known:
@@ -180,8 +183,9 @@ class Mind:
                 self.ws.post(Signal(0.55 + 0.4 * self.drives.social, "notice", f"greet:{t.concept_id}",
                                     {"kind": "arrived", "name": name, "maker": self.ethics.is_admin(t.concept_id)},
                                     "vision"))
-            else:
-                self.ws.post(Signal(0.45 + 0.5 * self.drives.curiosity, "notice", f"ask:{t.id}",
+            elif now - self._last_stranger > self.cfg.mind.stranger_every_s:
+                self._last_stranger = now
+                self.ws.post(Signal(0.45 + 0.5 * self.drives.curiosity, "notice", "stranger",
                                     {"kind": "stranger"}, "vision", ttl=5.0))
         # Self-training only takes very confident sightings, and rarely, so wrong labels stay
         # rare enough for sleep to catch.

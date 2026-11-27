@@ -65,6 +65,8 @@ class MindConfig:
     energy_drain: float = 0.00002          # per tick
     sleep_energy: float = 0.15             # below this the Machine asks to sleep
     ask_cooldown_s: float = 25.0           # min time between questions about someone it keeps seeing
+    stranger_votes: int = 6                # sightings before it decides a face is someone it doesn't know
+    stranger_every_s: float = 60.0         # and at most one "who is that?" moment in this time
     quiet_s: float = 30.0                  # after this much silence it may speak up (sooner when curious)
     tired_every_s: float = 120.0           # how often it notices that it is tired
     tired_rate: float = 0.3                # speaking rate change when tired (positive is slower)
