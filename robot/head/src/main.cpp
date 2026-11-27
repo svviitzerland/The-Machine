@@ -24,7 +24,7 @@ unsigned long lastStep = 0, lastWifiTry = 0;
 bool online = false;
 
 void report(Print &out) {
-  out.printf("OK P%.0f T%.0f\n", panGoal, tiltGoal);
+  out.printf("OK P%.0f T%.0f\r\n", panGoal, tiltGoal);
 }
 
 void handle(String cmd, Print &out, const char *from) {
@@ -44,7 +44,7 @@ void handle(String cmd, Print &out, const char *from) {
   }
   if (millis() - lastLog > 250) {                        // at most four lines a second
     lastLog = millis();
-    Serial.printf("<- %-12s from %s  goal P%.0f T%.0f\n", cmd.c_str(), from, panGoal, tiltGoal);
+    Serial.printf("<- %-12s from %s  goal P%.0f T%.0f\r\n", cmd.c_str(), from, panGoal, tiltGoal);
   }
   report(out);
 }
@@ -65,7 +65,7 @@ void connectWifi() {
 #ifdef WIFI_SSID
   if (WiFi.status() == WL_CONNECTED || millis() - lastWifiTry < 10000) return;
   lastWifiTry = millis();
-  Serial.printf("wifi: joining %s\n", WIFI_SSID);
+  Serial.printf("wifi: joining %s\r\n", WIFI_SSID);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
   WiFi.begin(WIFI_SSID, WIFI_PASS, WIFI_CHANNEL);
@@ -74,7 +74,7 @@ void connectWifi() {
 
 void comeOnline() {
   online = true;
-  Serial.printf("wifi: %s, listening on port %d\n", WiFi.localIP().toString().c_str(), PORT);
+  Serial.printf("wifi: %s, listening on port %d\r\n", WiFi.localIP().toString().c_str(), PORT);
   MDNS.begin(HOSTNAME);
   MDNS.addService("machine-head", "tcp", PORT);
   ArduinoOTA.setHostname(HOSTNAME);
@@ -95,7 +95,7 @@ void step() {
   pan.write(round(panNow));
   tilt.write(round(tiltNow));
   bool still = fabs(panGoal - panNow) < 0.5 && fabs(tiltGoal - tiltNow) < 0.5;
-  if (moving && still) Serial.printf("   at P%.0f T%.0f\n", panNow, tiltNow);
+  if (moving && still) Serial.printf("   at P%.0f T%.0f\r\n", panNow, tiltNow);
   moving = !still;
 }
 
@@ -105,7 +105,7 @@ void selfTest() {
   for (auto &m : moves) {
     panGoal = m[0];
     tiltGoal = m[1];
-    Serial.printf("test: P%.0f T%.0f\n", panGoal, tiltGoal);
+    Serial.printf("test: P%.0f T%.0f\r\n", panGoal, tiltGoal);
     while (fabs(panGoal - panNow) > 0.5 || fabs(tiltGoal - tiltNow) > 0.5) {
       step();
       delay(5);
@@ -121,7 +121,7 @@ void setup() {
   pan.setPeriodHertz(50);
   tilt.setPeriodHertz(50);
   int a = pan.attach(PAN_PIN, 500, 2400), b = tilt.attach(TILT_PIN, 500, 2400);
-  Serial.printf("servos: pan on GPIO %d %s, tilt on GPIO %d %s\n", PAN_PIN, a >= 0 ? "ok" : "FAILED",
+  Serial.printf("servos: pan on GPIO %d %s, tilt on GPIO %d %s\r\n", PAN_PIN, a >= 0 ? "ok" : "FAILED",
                 TILT_PIN, b >= 0 ? "ok" : "FAILED");
   pan.write(90);
   tilt.write(90);
@@ -143,7 +143,7 @@ void loop() {
       client = server.accept();
       client.setNoDelay(true);
       client.println("HELLO machine-head 1");
-      Serial.printf("client connected from %s\n", client.remoteIP().toString().c_str());
+      Serial.printf("client connected from %s\r\n", client.remoteIP().toString().c_str());
       report(client);
     }
     if (client && client.connected()) readLines(client, fromClient, client, "wifi");
