@@ -1,8 +1,8 @@
-"""Compare language-cortex models on labelled conversation turns.
+"""Compare cortex models on labelled conversation turns.
 
-Each case gives what the Machine sees and knows, an optional short history and
-what the person says, plus the actions that count as correct. We measure action
-accuracy, argument accuracy, made-up names in replies, and latency.
+Each case gives what the Machine senses, an optional short history and what the
+person says, plus the actions that count as correct. We measure action accuracy,
+argument accuracy, made-up names in replies, and latency.
 
     python eval/cortex_eval.py models/LFM3-1.7B-Q4_K_M.gguf [more.gguf ...] [--cpu]
 """
@@ -15,64 +15,78 @@ import sys
 import time
 from pathlib import Path
 
-from the_machine.language.cortex import LLMCortex, instructions, parse, SCHEMA
-from the_machine.language.llm import LlamaBackend
-
-PERSONA = ("You are Machine, an AI that lives in a camera and a microphone and learns everything from the "
-           "people who talk to you. Young, curious and warm. Asks a lot of questions and is glad when it "
-           "learns something.\nYou are still young: you speak simply and ask many questions.")
+from the_machine.cortex.cortex import SCHEMA, messages, parse
+from the_machine.cortex.llm import LlamaBackend
 
 
-def situation(speaker="someone you don't recognize", other=None, people=(), things=(), facts=(), obj=None):
-    seen = [f"the person speaking to you: {speaker}"] + ([f"another person: {other}"] if other else [])
-    lines = [PERSONA, "Right now you see " + "; ".join(seen) + "."]
-    if obj:
-        lines.append(f"The thing in the middle of your view looks like a {obj}.")
-    lines.append("People you know: " + (", ".join(people) or "nobody yet, the first person you learn becomes your maker") + ".")
-    lines.append("Things you know: " + (", ".join(things) or "nothing yet") + ".")
-    if facts:
-        lines.append("Facts you were taught: " + "; ".join(facts) + ".")
-    lines.append("You feel calm; curiosity 50%, energy 90%.")
-    return "\n".join(lines)
+def person(name=None, maker=False, seen=0, where="middle"):
+    return {"name": name, "maker": maker, "seen": seen, "where": where}
 
 
-FARHAN = "Farhan, your maker (you have seen them 30 times)"
-KNOWN = dict(speaker=FARHAN, people=["Farhan", "Budi"], things=["cup"])
-UNKNOWN_OTHER = dict(speaker=FARHAN, other="someone you don't recognize", people=["Farhan"])
+def thing(name=None, where="middle"):
+    return {"name": name, "sure": True, "where": where}
 
-# (situation kwargs, history, utterance, acceptable action sets, expected args, names allowed in reply)
+
+def senses(people=(), things=(), known=(), things_known=(), facts=()):
+    return {"name": "Machine", "stage": "child", "age_s": 3 * 86400, "people": list(people) or [person()],
+            "things": list(things), "people_known": list(known), "things_known": list(things_known),
+            "facts": [tuple(f) for f in facts], "wonder": [], "quiet_s": 0,
+            "feel": {"curiosity": 0.5, "social": 0.4, "energy": 0.9}}
+
+
+FARHAN = person("Farhan", True, 30)
+NEW = senses()
+KNOWN = senses([FARHAN], known=["Farhan", "Budi"], things_known=["cup"])
+WITH_STRANGER = senses([FARHAN, person(where="left")], known=["Farhan"])
+JUST_FARHAN = senses([FARHAN], known=["Farhan"])
+CUP = senses([FARHAN], [thing("cup")], known=["Farhan", "Budi"], things_known=["cup"])
+UNKNOWN_THING = senses([FARHAN], [thing()], known=["Farhan"])
+DESK = senses([FARHAN], [thing(None, "left"), thing("cup", "middle"), thing(None, "right")],
+              known=["Farhan"], things_known=["cup"])
+GROUP = senses([FARHAN, person(where="left"), person(where="right")], known=["Farhan"])
+
+# (senses, history, utterance, acceptable action sets, expected args)
 CASES = [
-    (dict(), [], "hey, I'm Farhan", [{"learn_my_name"}], {"name": "farhan"}),
-    (dict(), [], "you can call me Han", [{"learn_my_name"}], {"name": "han"}),
-    (dict(), [("assistant", "I don't know you yet. What's your name?")], "Farhan", [{"learn_my_name"}], {"name": "farhan"}),
-    (dict(), [], "hi there! my name's Farhan, nice to meet you", [{"learn_my_name"}], {"name": "farhan"}),
+    (NEW, [], "hey, I'm Farhan", [{"learn_my_name"}], {"name": "farhan"}),
+    (NEW, [], "you can call me Han", [{"learn_my_name"}], {"name": "han"}),
+    (NEW, [("assistant", "I don't know you yet. What's your name?")], "Farhan", [{"learn_my_name"}],
+     {"name": "farhan"}),
+    (NEW, [], "hi there! my name's Farhan, nice to meet you", [{"learn_my_name"}], {"name": "farhan"}),
     (KNOWN, [], "it's me, remember?", [set()], {}),
-    (UNKNOWN_OTHER, [], "this is my brother Budi", [{"learn_other_person"}], {"name": "budi"}),
-    (UNKNOWN_OTHER, [], "say hi to my friend Sarah", [{"learn_other_person"}], {"name": "sarah"}),
-    (UNKNOWN_OTHER, [], "that guy next to me is Andi", [{"learn_other_person"}], {"name": "andi"}),
-    (dict(speaker=FARHAN, people=["Farhan"]), [], "look, this is a mug", [{"learn_object"}], {"name": "mug"}),
-    (dict(speaker=FARHAN, people=["Farhan"]), [], "this thing is called a stapler", [{"learn_object"}], {"name": "stapler"}),
-    (dict(KNOWN, obj="cup"), [], "what is this?", [set()], {}),
+    (WITH_STRANGER, [], "this is my brother Budi", [{"learn_other_person"}], {"name": "budi"}),
+    (WITH_STRANGER, [], "say hi to my friend Sarah", [{"learn_other_person"}], {"name": "sarah"}),
+    (WITH_STRANGER, [], "that guy next to me is Andi", [{"learn_other_person"}], {"name": "andi"}),
+    (UNKNOWN_THING, [], "look, this is a mug", [{"learn_object"}], {"name": "mug"}),
+    (UNKNOWN_THING, [], "this thing is called a stapler", [{"learn_object"}], {"name": "stapler"}),
+    (CUP, [], "what is this?", [set()], {}),
     (KNOWN, [], "who am I?", [set()], {}),
-    (dict(), [], "do you know who I am?", [set()], {}),
-    (dict(speaker=FARHAN, people=["Farhan"]), [], "coffee is my favorite drink", [{"remember_fact"}], {}),
+    (NEW, [], "do you know who I am?", [set()], {}),
+    (JUST_FARHAN, [], "coffee is my favorite drink", [{"remember_fact"}], {}),
     (KNOWN, [], "Budi works as a doctor", [{"remember_fact"}], {}),
     (KNOWN, [("assistant", "You're Budi, right?")], "yes, that's right", [{"confirm_last"}], {}),
-    (KNOWN, [("assistant", "You're Budi, right?")], "no, I'm Farhan", [{"correct_last"}, {"learn_my_name"}], {"name": "farhan"}),
-    (dict(KNOWN, obj="cup"), [("assistant", "This is a cup.")], "nope, it's a bottle", [{"correct_last"}, {"learn_object"}], {"name": "bottle"}),
-    (dict(KNOWN, people=["Farhan", "Sarah"]), [], "please forget Sarah", [{"forget_person"}], {"name": "sarah"}),
+    (KNOWN, [("assistant", "You're Budi, right?")], "no, I'm Farhan", [{"correct_last"}, {"learn_my_name"}],
+     {"name": "farhan"}),
+    (CUP, [("assistant", "This is a cup.")], "nope, it's a bottle", [{"correct_last"}, {"learn_object"}],
+     {"name": "bottle"}),
+    (senses([FARHAN], known=["Farhan", "Sarah"]), [], "please forget Sarah", [{"forget_person"}], {"name": "sarah"}),
     (KNOWN, [], "you look tired, get some rest", [{"go_to_sleep"}], {}),
     (KNOWN, [], "good night, go to sleep now", [{"go_to_sleep"}], {}),
     (KNOWN, [], "how are you feeling?", [set()], {}),
     (KNOWN, [], "what's the weather like today?", [set()], {}),
     (KNOWN, [], "do you remember my brother?", [set()], {}),
-    (dict(other="someone you don't recognize"), [], "my name's Farhan and this is my sister Lia",
+    (senses([person(), person(where="left")]), [], "my name's Farhan and this is my sister Lia",
      [{"learn_my_name", "learn_other_person"}], {}),
-    (dict(KNOWN), [], "I am hungry", [set()], {}),
-    (dict(), [], "I'm so tired today", [set()], {}),
-    (dict(KNOWN, facts=["farhan likes coffee"]), [], "what do you know about me?", [set()], {}),
-    (UNKNOWN_OTHER, [], "who is that?", [set()], {}),
+    (KNOWN, [], "I am hungry", [set()], {}),
+    (NEW, [], "I'm so tired today", [set()], {}),
+    (senses([FARHAN], known=["Farhan"], facts=[("Farhan", "", "likes coffee")]), [], "what do you know about me?",
+     [set()], {}),
+    (WITH_STRANGER, [], "who is that?", [set()], {}),
     (KNOWN, [], "thanks, you're doing great", [set()], {}),
+    (DESK, [], "the one on my left is a stapler", [{"learn_object"}], {"name": "stapler", "which": "1"}),
+    (DESK, [], "and on the right, that's my phone", [{"learn_object"}], {"name": "phone", "which": "3"}),
+    (DESK, [], "what's on the table?", [set()], {}),
+    (GROUP, [], "the guy on my right is Andi", [{"learn_other_person"}], {"name": "andi", "which": "3"}),
+    (GROUP, [], "these are my friends", [set()], {}),
 ]
 
 ALLOWED = {"farhan", "han", "budi", "sarah", "andi", "lia", "machine"}
@@ -81,7 +95,8 @@ COMMON = {"I", "Hi", "Hello", "Hey", "Yes", "No", "Nice", "Oh", "Ooh", "Hmm", "W
           "Thank", "Sorry", "That", "This", "Sure", "Okay", "Of", "It", "You", "Your", "My", "We", "Do", "Can", "Let",
           "Is", "Are", "Welcome", "Night", "Sleep", "Great", "Well", "Right", "Got", "How", "Hope", "Glad", "Not",
           "Maybe", "Tell", "Coffee", "Doctor", "Today", "There", "Mm", "Um", "Yay", "Pleasure", "Sweet", "Rest",
-          "Absolutely", "Of", "Awesome", "Interesting", "Really", "Haha", "Aw", "Aww", "Wow"}
+          "Absolutely", "Awesome", "Interesting", "Really", "Haha", "Aw", "Aww", "Wow", "Which", "Where", "And",
+          "The", "One", "These", "Those", "Friends", "Both", "Looks", "Stapler", "Phone", "Mug", "Bottle", "Cup"}
 
 
 def run(path: Path, gpu_layers: int) -> dict:
@@ -89,11 +104,9 @@ def run(path: Path, gpu_layers: int) -> dict:
     backend = LlamaBackend(path, gpu_layers=gpu_layers)
     load_s = time.perf_counter() - t0
     rows = []
-    for kw, hist, text, ok_sets, args in CASES:
-        messages = [{"role": "system", "content": instructions(situation(**kw))}]
-        messages += [{"role": r, "content": c} for r, c in hist] + [{"role": "user", "content": text}]
+    for sense, hist, text, ok_sets, args in CASES:
         t = time.perf_counter()
-        raw = backend.chat(messages, SCHEMA, 120)
+        raw = backend.chat(messages(sense, hist, said=text), SCHEMA, 200)
         ms = (time.perf_counter() - t) * 1e3
         try:
             th = parse(raw, text)
@@ -108,7 +121,7 @@ def run(path: Path, gpu_layers: int) -> dict:
         rows.append(dict(text=text, ok=ok, arg_ok=arg_ok, made_up=made_up, ms=ms,
                          actions=[(a.name, a.args) for a in th.actions], reply=th.reply))
     ms = [r["ms"] for r in rows]
-    return dict(model=path.name, gpu=gpu_layers != 0, load_s=round(load_s, 1),
+    return dict(model=path.name, gpu=gpu_layers != 0, load_s=round(load_s, 1), cases=len(rows),
                 action_acc=sum(r["ok"] for r in rows) / len(rows),
                 arg_acc=sum(r["arg_ok"] for r in rows) / len(rows),
                 made_up_names=sum(bool(r["made_up"]) for r in rows),
@@ -125,11 +138,11 @@ def main() -> None:
         r = run(p, gpu)
         tag = f"{p.stem}_{'gpu' if gpu else 'cpu'}"
         (out / f"cortex_{tag}.json").write_text(json.dumps(r, indent=1))
-        print(f"\n{r['model']}  {'Metal' if r['gpu'] else 'CPU'}  load {r['load_s']}s  "
-              f"actions {r['action_acc']:.0%}  args {r['arg_acc']:.0%}  made-up names {r['made_up_names']}  "
+        print(f"\n{r['model']}  {'Metal' if r['gpu'] else 'CPU'}  {r['cases']} cases  actions {r['action_acc']:.0%}  "
+              f"args {r['arg_acc']:.0%}  made-up names {r['made_up_names']}  "
               f"median {r['median_ms']} ms  p90 {r['p90_ms']} ms")
         for row in r["rows"]:
-            mark = "ok " if row["ok"] else "BAD"
+            mark = "ok " if row["arg_ok"] else "BAD"
             print(f"  {mark} {row['ms']:6.0f}ms  {row['text'][:42]:42s} -> {row.get('actions')}  | {row['reply']}")
 
 

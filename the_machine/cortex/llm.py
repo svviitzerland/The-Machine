@@ -1,4 +1,4 @@
-"""Local LLM backend for the language cortex, using llama.cpp.
+"""Local LLM backend for the cortex, using llama.cpp.
 
 Any instruction-tuned GGUF model in ``models/`` works. Output is constrained by
 a grammar built from the JSON schema, so the cortex always gets valid JSON with
@@ -7,6 +7,7 @@ while the person is still looking at it.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,8 @@ class LlamaBackend:
                                        eos_token=model.token_get_text(self.llm.token_eos()),
                                        bos_token=model.token_get_text(self.llm.token_bos()))
         self._grammars: dict[str, object] = {}
+        # Free the model before the interpreter tears down Metal, or llama.cpp aborts on exit.
+        atexit.register(self.llm.close)
 
     def _grammar(self, schema: dict):
         from llama_cpp import LlamaGrammar
@@ -33,11 +36,22 @@ class LlamaBackend:
             self._grammars[key] = LlamaGrammar.from_json_schema(key, verbose=False)
         return self._grammars[key]
 
-    def chat(self, messages: list[dict], schema: dict, max_tokens: int = 120) -> str:
+    def _complete(self, messages: list[dict], schema: dict, max_tokens: int, stream: bool):
         prompt = self.fmt(messages=messages, enable_thinking=False).prompt
-        out = self.llm.create_completion(prompt, grammar=self._grammar(schema), max_tokens=max_tokens,
-                                         temperature=0.5, top_p=0.9, top_k=40, repeat_penalty=1.05)
-        return out["choices"][0]["text"]
+        return self.llm.create_completion(prompt, grammar=self._grammar(schema), max_tokens=max_tokens,
+                                          temperature=0.6, top_p=0.9, top_k=40, repeat_penalty=1.05,
+                                          stream=stream)
+
+    def chat(self, messages: list[dict], schema: dict, max_tokens: int = 200) -> str:
+        return self._complete(messages, schema, max_tokens, False)["choices"][0]["text"]
+
+    def stream(self, messages: list[dict], schema: dict, max_tokens: int, on_text) -> str:
+        raw = ""
+        for chunk in self._complete(messages, schema, max_tokens, True):
+            piece = chunk["choices"][0]["text"]
+            raw += piece
+            on_text(piece)
+        return raw
 
 
 def find_model(models_dir: Path, preferred: list[str]) -> Path | None:
@@ -54,7 +68,7 @@ def find_model(models_dir: Path, preferred: list[str]) -> Path | None:
 
 
 def load_cortex(cfg):
-    """Language cortex backed by a local LLM, or None if no model or llama.cpp is installed."""
+    """The cortex backed by a local LLM, or None if no model or llama.cpp is installed."""
     path = find_model(Path(cfg.models_dir), cfg.mind.llm_models)
     if path is None:
         return None

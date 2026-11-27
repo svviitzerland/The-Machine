@@ -66,9 +66,49 @@ def ensure_speech(cfg) -> None:
         print("[models] skipping whisper (install the 'ears' extra)", file=sys.stderr)
     try:
         import ptts
-        from ..language.persona import load_persona
-        voice = load_persona(cfg.mind.persona).voice
-        print(f"[models] voice: phonon with voice {voice} ...", file=sys.stderr)
-        ptts.TTS(cfg.speech.tts_model, lang=cfg.mind.language, quant=cfg.speech.tts_quant).synth("hi", voice=voice)
+        print(f"[models] voice: phonon with voice {cfg.speech.voice} ...", file=sys.stderr)
+        ptts.TTS(cfg.speech.tts_model, lang=cfg.speech.language, quant=cfg.speech.tts_quant).synth(
+            "hi", voice=cfg.speech.voice)
     except ImportError:
         print("[models] skipping phonon (install the 'voice' extra)", file=sys.stderr)
+
+
+BRAIN = ModelSpec(
+    "brain", "LFM3-1.7B-Q4_K_M.gguf",
+    "https://huggingface.co/LiquidAI/LFM3-1.7B-GGUF/resolve/main/LFM3-1.7B-Q4_K_M.gguf",
+    "the cortex: understanding and talking", "LFM Open License v1.0")
+
+
+def fetch(url: str, dst: Path, tries: int = 50) -> None:
+    """Download with resume, since a 1 GB file on a slow line will be cut off now and then."""
+    import time
+    tmp = dst.with_name(dst.name + ".part")
+    for _ in range(tries):
+        have = tmp.stat().st_size if tmp.exists() else 0
+        req = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "ab" if have and r.status == 206 else "wb") as f:
+                total = have + int(r.headers.get("Content-Length", 0)) if r.status == 206 else \
+                    int(r.headers.get("Content-Length", 0))
+                while chunk := r.read(1 << 20):
+                    f.write(chunk)
+                    print(f"\r[models] {dst.name}: {f.tell() / 1e6:.0f} / {total / 1e6:.0f} MB", end="",
+                          file=sys.stderr)
+            if total and tmp.stat().st_size >= total:
+                tmp.rename(dst)
+                print(file=sys.stderr)
+                return
+        except OSError as e:
+            print(f"\n[models] connection dropped ({type(e).__name__}), resuming ...", file=sys.stderr)
+            time.sleep(3)
+    raise RuntimeError(f"could not download {url}")
+
+
+def ensure_brain(cfg) -> Path | None:
+    """Download the cortex model once, unless some GGUF model is already in models/."""
+    if any(cfg.models_dir.glob("*.gguf")):
+        return None
+    print(f"[models] downloading {BRAIN.name} ({BRAIN.purpose}, about 1.1 GB) ...", file=sys.stderr)
+    dst = cfg.models_dir / BRAIN.filename
+    fetch(BRAIN.url, dst)
+    return dst

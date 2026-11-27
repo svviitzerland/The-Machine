@@ -15,6 +15,7 @@ YELLOW = (0, 215, 255)
 WHITE = (235, 235, 235)
 BLUE = (255, 170, 70)
 RED = (70, 70, 235)
+CYAN = (220, 200, 90)
 GREY = (150, 150, 150)
 DARK = (14, 14, 14)
 ROLE_COLOR = {"admin": YELLOW, "user": WHITE, "stranger": BLUE}
@@ -69,6 +70,7 @@ class Hud:
     def __init__(self):
         self.locked: dict[int, float] = {}            # track id -> when we first drew it
         self.named: dict[tuple[int, int], float] = {}  # (track, concept) -> when it got that identity
+        self.thing_named: dict[tuple[int, int], float] = {}
         self.heard, self.heard_t = "", 0.0
         self.said, self.said_t = "", 0.0
         self.wave: deque[float] = deque([0.0] * 28, maxlen=28)
@@ -107,8 +109,10 @@ class Hud:
         self.named = {k: v for k, v in self.named.items() if k[0] in live}
         for t in mind.visible():
             self._face(out, mind, t, now)
-        if mind.pending and mind.pending.kind == "object":
-            self._object(out, now)
+        alive = {t.id for t in mind.objects_in_view()}
+        self.thing_named = {k: v for k, v in self.thing_named.items() if k[0] in alive}
+        for t in mind.objects_in_view():
+            self._thing(out, mind, t, now)
         self._status(out, mind, ears, speaking, now)
         self._drives(out, mind, fps)
         self._subtitles(out, now)
@@ -154,13 +158,30 @@ class Hud:
         if name:
             text(img, name, (x + 9, top + 33), 0.5, WHITE)
 
-    def _object(self, img, now):
-        h, w = img.shape[:2]
-        x, y, bw, bh = w // 4, h // 4, w // 2, h // 2
-        dashed_rect(img, x, y, bw, bh, YELLOW, 12)
-        p = int((math.sin(now * 2.5) * 0.5 + 0.5) * 10)
-        brackets(img, x - p, y - p, bw + 2 * p, bh + 2 * p, YELLOW, 24)
-        text(img, "LEARNING OBJECT", (x, y - 8), 0.42, YELLOW)
+    def _thing(self, img, mind, t, now):
+        x, y, bw, bh = [int(v) for v in t.box]
+        p = mind.pending
+        teaching = bool(p and p.kind == "object" and p.track_id == t.id)
+        name = mind.name_of(t.concept_id) if t.known else None
+        if teaching:
+            g = int((math.sin(now * 6) * 0.5 + 0.5) * 8)
+            brackets(img, x - g, y - g, bw + 2 * g, bh + 2 * g, YELLOW, max(10, min(bw, bh) // 5), 2)
+            label, col = "LEARNING", YELLOW
+        elif name:
+            cv2.rectangle(img, (x, y), (x + bw, y + bh), CYAN, 1, cv2.LINE_AA)
+            brackets(img, x, y, bw, bh, CYAN, max(8, min(bw, bh) // 6), 2)
+            label, col = "OBJECT", CYAN
+        elif getattr(mind.object_engine, "finds_objects", False):
+            dashed_rect(img, x, y, bw, bh, GREY, 6)
+            label, col = "UNKNOWN", GREY
+        else:
+            return
+        text_ = typed(name.upper(), self.thing_named.setdefault((t.id, t.concept_id), now), now) if name else ""
+        cw = max(110, width(text_, 0.45) + 16)
+        panel(img, x, y - (36 if text_ else 18), x + cw, y)
+        text(img, label, (x + 6, y - (24 if text_ else 6)), 0.34, col)
+        if text_:
+            text(img, text_, (x + 6, y - 7), 0.45, WHITE)
 
     def _status(self, img, mind, ears, speaking, now):
         h, w = img.shape[:2]

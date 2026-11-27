@@ -41,7 +41,6 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
     from .memory.lexicon import Lexicon
     from .memory.semantic import PrototypeMemory, l2n
     from .memory.store import Store
-    from .language.pack import load_pack
     from .perception import models
     from .perception.vision import FaceEngine, ObjectEncoder
 
@@ -112,7 +111,7 @@ def run(cfg: C.Config, threads: int | None = None) -> dict:
 
         # sleep cost: 20 people x 40 exemplars, plus 500 unlabelled sightings
         mem = PrototypeMemory(s, cfg.memory, "face")
-        lex = Lexicon(s, cfg.memory, load_pack("en").content_words)
+        lex = Lexicon(s, cfg.memory)
         centers = l2n(rng.normal(size=(25, 128)))
         for i in range(20):
             c = s.new_concept("person", f"p{i}")

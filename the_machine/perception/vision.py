@@ -184,3 +184,26 @@ class Camera:
     def close(self) -> None:
         self._stop.set()
         self.cap.release()
+
+
+class CenterObjects:
+    """Fallback object engine when no detector is installed: one box in the middle of
+    the view and the hand-made descriptor. It can learn what it is shown, but it
+    can't find several things at once."""
+
+    finds_objects = False
+
+    def __init__(self):
+        self.enc = ObjectEncoder()
+
+    def detect(self, frame: np.ndarray) -> np.ndarray:
+        h, w = frame.shape[:2]
+        return np.array([[w / 4, h / 4, w / 2, h / 2, 1.0]], np.float32)
+
+    def embed(self, frame: np.ndarray, row: np.ndarray) -> np.ndarray:
+        x, y, bw, bh = [int(v) for v in row[:4]]
+        return self.enc.embed(frame[max(0, y):y + bh, max(0, x):x + bw])
+
+
+def load_object_engine(cfg):
+    return CenterObjects()

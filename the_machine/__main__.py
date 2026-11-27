@@ -42,6 +42,7 @@ def main(argv: list[str] | None = None) -> None:
         for k, p in models.ensure(cfg.models_dir).items():
             print(f"{k:6s} {p}  {p.stat().st_size/1e6:.2f} MB")
         models.ensure_speech(cfg)
+        models.ensure_brain(cfg)
         print("all models ready. The Machine now runs offline.")
     elif a.command == "sleep":
         from .core.mind import Mind
@@ -64,12 +65,15 @@ def main(argv: list[str] | None = None) -> None:
 
 def _chat(cfg: C.Config, silent: bool) -> None:
     from .core.mind import Mind
-    from .language.persona import load_persona
-    from .language.voice import Voice
+    from .cortex.llm import load_cortex
     from .memory.store import Store
-    voice = Voice(load_persona(cfg.mind.persona), cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent)
-    from .language.llm import load_cortex
-    m = Mind(cfg, Store(cfg.memory.db_path), voice.say, cortex=load_cortex(cfg))
+    from .voice import Voice
+    voice = Voice(cfg.speech.voice, cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent,
+                  language=cfg.speech.language, name=cfg.name)
+    cortex = load_cortex(cfg)
+    if cortex is None:
+        sys.exit("[chat] no cortex model in models/. Run: python -m the_machine download")
+    m = Mind(cfg, Store(cfg.memory.db_path), voice.say, cortex=cortex)
     print("[chat] text-only mode (no camera). Ctrl+D to quit.", file=sys.stderr)
     for line in sys.stdin:
         if line.strip():
@@ -95,7 +99,8 @@ def _status(cfg: C.Config, as_json: bool) -> None:
         "concepts": [dict(r) for r in s.q(
             "SELECT c.id, c.kind, c.name, c.role, c.seen_count, COUNT(p.id) AS prototypes FROM concepts c "
             "LEFT JOIN prototypes p ON p.concept_id=c.id GROUP BY c.id ORDER BY c.id")],
-        "facts": [f"{r['subject']} is {r['object']}" for r in s.q("SELECT * FROM facts ORDER BY ts DESC LIMIT 20")],
+        "facts": [" ".join(x for x in (r["subject"], r["relation"], r["object"]) if x)
+                  for r in s.q("SELECT * FROM facts ORDER BY ts DESC LIMIT 20")],
     }
     if as_json:
         print(json.dumps(info, indent=2))

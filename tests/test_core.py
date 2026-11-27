@@ -10,14 +10,12 @@ import pytest
 from the_machine.config import Config
 from the_machine.core.mind import Mind
 from the_machine.core.workspace import Signal, Workspace
-from the_machine.language.pack import load_pack
 from the_machine.memory.consolidation import Consolidator
 from the_machine.memory.lexicon import Lexicon
 from the_machine.memory.semantic import PrototypeMemory, l2n
 from the_machine.memory.store import Store
 
 D = 128
-EN = load_pack("en")
 
 
 def identity(rng, n_ids=5, spread=0.35):
@@ -74,7 +72,7 @@ def test_persistence(tmp_path):
 
 
 def test_lexicon_cross_situational(store):
-    lex = Lexicon(store, Config().memory, EN.content_words)
+    lex = Lexicon(store, Config().memory)
     cup, ball, dog = (store.new_concept("object", None) for _ in range(3))
     rng = np.random.default_rng(3)
     scenes = [([cup, ball], "look at the cup"), ([cup, dog], "a cup here"), ([ball, dog], "nice ball"),
@@ -99,24 +97,11 @@ def test_workspace_habituation():
     assert won == ["greet", "ask"]
 
 
-def test_language_pack_intents():
-    cases = {"my name is Farhan": ("name_me", "Farhan"), "who am I?": ("who_am_i", None),
-             "this is a cup": ("name_object", "cup"), "what is this?": ("what_is", None),
-             "no, it's a plate": ("correct", "plate"), "coffee is a drink": ("fact", "coffee"),
-             "go to sleep": ("sleep", None), "this is my friend Sam": ("name_other", "Sam"),
-             "the weather today": ("chat", None)}
-    for text, (kind, arg) in cases.items():
-        it = EN.parse(text)
-        assert it.kind == kind, (text, it)
-        if arg:
-            assert it.arg == arg, (text, it)
-
-
 def test_sleep_discovers_stranger_and_replays(store):
     rng = np.random.default_rng(4)
     cfg = Config().memory
     mem = PrototypeMemory(store, cfg, "face")
-    lex = Lexicon(store, cfg, EN.content_words)
+    lex = Lexicon(store, cfg)
     _, sample = identity(rng, spread=0.25)   # genuine-pair cosine ~0.5, like SFace
     known = store.new_concept("person", "known")
     for x in sample(0, 12):
@@ -127,54 +112,13 @@ def test_sleep_discovers_stranger_and_replays(store):
     rep = Consolidator(store, cfg, mem, lex).sleep()
     assert rep.strangers_found == 1 and rep.concepts_replayed >= 1
     assert mem.recognize(sample(1, 1)[0]).known
-class FakeFaces:
-    """Stands in for YuNet+SFace: each 'frame' is a list of (box, embedding)."""
-
-    def detect(self, frame):
-        return np.array([np.r_[box, np.zeros(10), 0.9] for box, _ in frame], np.float32).reshape(-1, 15)
-
-    def embed(self, frame, row):
-        for box, e in frame:
-            if np.allclose(row[:4], box):
-                return e
-
-
-def test_mind_learns_and_recognises_teacher(tmp_path):
-    rng = np.random.default_rng(5)
-    cfg = Config()
-    cfg.memory.db_path = tmp_path / "mind.db"
-    said: list[str] = []
-    m = Mind(cfg, Store(cfg.memory.db_path), said.append, face_engine=FakeFaces())
-    _, sample = identity(rng)
-    box = np.array([100, 100, 120, 120], np.float32)
-    for x in sample(0, 6):
-        m.see([(box, x)])
-        m.tick()
-    m.hear("my name is Farhan")
-    m.tick()
-    assert any("Farhan" in s for s in said)
-    assert m.ethics.admin_id is not None          # first teacher becomes admin
-    for x in sample(0, 4):
-        m.see([(box, x)])
-    m.hear("who am I?")
-    m.tick()
-    assert "Farhan" in said[-1]
-    # a new face is unknown
-    m.tracker.tracks.clear()
-    for x in sample(3, 5):
-        m.see([(box, x)])
-    m.hear("who am I?")
-    m.tick()
-    assert "Farhan" not in said[-1]
-    rep = m.sleep()
-    assert rep.prototypes_after >= 1
 
 
 def test_sleep_demotes_wrong_self_labels(store):
     rng = np.random.default_rng(6)
     cfg = Config().memory
     mem = PrototypeMemory(store, cfg, "face")
-    lex = Lexicon(store, cfg, EN.content_words)
+    lex = Lexicon(store, cfg)
     _, sample = identity(rng, spread=0.25)
     a = store.new_concept("person", "a")
     for x in sample(0, 10):
@@ -188,89 +132,195 @@ def test_sleep_demotes_wrong_self_labels(store):
     assert rep.self_demoted >= 3 and rep.self_verified >= 3
 
 
-def test_persona_moods_change_rate_and_wording():
-    from the_machine.language.persona import load_persona, mood_for
-    p = load_persona("machine")
-    assert mood_for("ask_name", 0.5, 1.0) == "curious"
-    assert mood_for("greet_known", 0.5, 0.1) == "tired"
-    texts = {p.style("Who are you?", "curious", stage=2)[0] for _ in range(50)}
-    assert "Who are you?" in texts and len(texts) > 1
-    assert p.style("Hi", "curious", 2)[1] < p.style("Hi", "tired", 2)[1]
-    assert p.style("Farhan... Farhan!", "happy", 0)[0] == "Farhan... Farhan!"
+class FakeFaces:
+    """Stands in for YuNet+SFace: each 'frame' is a list of (box, embedding)."""
+
+    def detect(self, frame):
+        return np.array([np.r_[box, np.zeros(10), 0.9] for box, _ in frame["faces"]], np.float32).reshape(-1, 15)
+
+    def embed(self, frame, row):
+        for box, e in frame["faces"]:
+            if np.allclose(row[:4], box):
+                return e
+
+
+class FakeThings:
+    finds_objects = True
+
+    def detect(self, frame):
+        return np.array([np.r_[box, 0.9] for box, _ in frame["things"]], np.float32).reshape(-1, 5)
+
+    def embed(self, frame, row):
+        for box, e in frame["things"]:
+            if np.allclose(row[:4], box):
+                return e
+
+
+class Frame(dict):
+    """A fake camera frame: faces and things with their embeddings, and a size."""
+    shape = (480, 640, 3)
 
 
 class FakeLLM:
-    """Stands in for the LLM backend: returns a fixed JSON answer."""
+    """Stands in for the model. ``answer`` is a dict, or a function of the messages that returns one."""
 
     def __init__(self, answer):
         self.answer, self.seen = answer, []
 
     def chat(self, messages, schema, max_tokens):
         self.seen.append(messages)
-        return json.dumps(self.answer)
+        a = self.answer(messages) if callable(self.answer) else self.answer
+        return json.dumps(a)
 
 
-def test_cortex_understands_natural_naming(tmp_path):
-    from the_machine.language.cortex import LLMCortex
-    rng = np.random.default_rng(7)
-    cfg = Config()
-    said = []
-    llm = FakeLLM({"actions": [{"do": "learn_my_name", "name": "Farhan"}], "reply": "Farhan! Nice to finally meet you."})
-    m = Mind(cfg, Store(tmp_path / "c.db"), said.append, face_engine=FakeFaces(), cortex=LLMCortex(llm))
-    _, sample = identity(rng)
-    box = np.array([100, 100, 120, 120], np.float32)
-    for x in sample(0, 5):
-        m.see([(box, x)])
-    m.hear("hey, it's me Farhan")
-    m.tick()
-    for _ in range(100):
-        if not m.thinking:
-            break
-        time.sleep(0.01)
+def settle(m, until=lambda: False):
+    for _ in range(200):
         m.tick()
-    assert said[-1] == "Farhan! Nice to finally meet you."
-    assert m.store.find_concept("Farhan", "person") is not None
-    assert m.ethics.admin_id is not None
-    assert "someone you don't recognize" in llm.seen[0][0]["content"]
+        if not m.thinking and until():
+            return
+        time.sleep(0.005)
 
 
-def test_cortex_falls_back_when_the_model_fails(tmp_path):
-    from the_machine.language.cortex import LLMCortex
+def make_mind(tmp_path, llm, **kw):
+    from the_machine.cortex.cortex import LLMCortex
+    cfg = Config()
+    cfg.memory.db_path = tmp_path / "mind.db"
+    said: list[str] = []
+    m = Mind(cfg, Store(cfg.memory.db_path), said.append, cortex=LLMCortex(llm) if llm else None, **kw)
+    return m, said
 
+
+FACE_BOX = np.array([280, 100, 120, 120], np.float32)
+
+
+def test_mind_learns_a_name_from_natural_speech(tmp_path):
+    rng = np.random.default_rng(5)
+    _, sample = identity(rng)
+
+    def brain(messages):
+        heard = messages[-1]["content"]
+        if "Farhan" in heard:
+            return {"actions": [{"do": "learn_my_name", "name": "Farhan"}], "reply": "Farhan! Hi."}
+        return {"actions": [], "reply": ""}
+
+    llm = FakeLLM(brain)
+    m, said = make_mind(tmp_path, llm, face_engine=FakeFaces())
+    for x in sample(0, 6):
+        m.see(Frame(faces=[(FACE_BOX, x)], things=[]))
+    settle(m)
+    m.hear("hey, it's me Farhan")
+    settle(m, lambda: "Farhan! Hi." in said)
+    assert m.ethics.admin_id is not None          # the first person it learns made it
+    assert m.senses()["people"][0]["name"] == "Farhan"
+    assert any("1 (talking to you): unknown" in msgs[0]["content"] for msgs in llm.seen)
+    m.tracker.tracks.clear()                      # a new face is not Farhan
+    for x in sample(3, 5):
+        m.see(Frame(faces=[(FACE_BOX, x)], things=[]))
+    assert m.senses()["people"][0]["name"] is None
+    assert m.sleep().prototypes_after >= 1
+
+
+def test_without_a_cortex_it_stays_quiet(tmp_path):
+    m, said = make_mind(tmp_path, None)
+    m.hear("my name is Farhan")
+    settle(m)
+    assert said == []
+
+
+def test_a_failing_model_does_not_hang(tmp_path):
     class Broken:
         def chat(self, *a):
             raise RuntimeError("no model")
 
-    said = []
-    m = Mind(Config(), Store(tmp_path / "b.db"), said.append, cortex=LLMCortex(Broken()))
-    m.hear("coffee is a drink")
-    for _ in range(100):
-        m.tick()
-        if not m.thinking and said:
-            break
-        time.sleep(0.01)
-    assert "coffee" in said[-1].lower()
+    m, said = make_mind(tmp_path, Broken())
+    m.hear("hello")
+    settle(m, lambda: True)
+    assert m.thinking == 0 and said == []
 
 
-def test_noticing_is_voiced_by_cortex_and_never_teaches(tmp_path):
-    from the_machine.language.cortex import LLMCortex
-    import json, time as _t
+def test_noticing_is_voiced_by_the_cortex_and_never_teaches(tmp_path):
+    def brain(messages):
+        assert messages[-1]["content"].startswith("(")
+        return {"actions": [{"do": "learn_other_person", "name": "Farhan"}], "reply": "There you are, Farhan."}
 
-    class Greeter:
-        def chat(self, messages, schema, max_tokens):
-            assert messages[-1]["content"].startswith("(")
-            return json.dumps({"actions": [{"do": "learn_other_person", "name": "Farhan"}],
-                               "reply": "There you are, Farhan."})
-
-    said = []
-    cfg = Config()
-    cfg.memory.db_path = tmp_path / "m.db"
-    m = Mind(cfg, Store(cfg.memory.db_path), said.append, cortex=LLMCortex(Greeter()))
-    m.speak("greet_admin", n="Farhan")
-    for _ in range(100):
-        m.tick()
-        if said:
-            break
-        _t.sleep(0.01)
+    m, said = make_mind(tmp_path, FakeLLM(brain))
+    m._think(noticed={"kind": "arrived", "name": "Farhan", "maker": True})
+    settle(m, lambda: bool(said))
     assert said == ["There you are, Farhan."]
     assert m.store.find_concept("Farhan", "person") is None
+
+
+def test_it_speaks_up_when_it_has_been_quiet(tmp_path):
+    rng = np.random.default_rng(8)
+    _, sample = identity(rng)
+    llm = FakeLLM({"actions": [], "reply": "What are you working on?"})
+    m, said = make_mind(tmp_path, llm, face_engine=FakeFaces())
+    for x in sample(0, 2):
+        m.see(Frame(faces=[(FACE_BOX, x)], things=[]))
+    m.ws.habituation_s = 0
+    m._last_exchange = m._last_muse = time.time() - 600
+    settle(m, lambda: bool(said))
+    assert said == ["What are you working on?"]
+    assert any("quiet" in msgs[-1]["content"] for msgs in llm.seen)
+
+
+def test_it_learns_the_thing_it_is_pointed_at_among_several(tmp_path):
+    rng = np.random.default_rng(9)
+    _, sample = identity(rng, n_ids=3, spread=0.05)
+    boxes = [np.array([40 + 200 * i, 300, 120, 120], np.float32) for i in range(3)]
+
+    def frame():
+        return Frame(faces=[], things=[(boxes[i], sample(i, 1)[0]) for i in range(3)])
+
+    llm = FakeLLM({"actions": [{"do": "learn_object", "name": "mug", "which": "2"}], "reply": "A mug."})
+    m, said = make_mind(tmp_path, llm, object_engine=FakeThings())
+    for _ in range(4):
+        m.see(frame())
+    assert len(m.senses()["things"]) == 3
+    m.hear("the one in the middle is a mug")
+    settle(m, lambda: bool(said))
+    m.things.tracks.clear()
+    m.pending = None
+    for _ in range(4):
+        m.see(frame())
+    names = [t["name"] for t in m.senses()["things"]]
+    assert names == [None, "mug", None]
+
+
+def test_a_fact_about_me_is_stored_under_my_name(tmp_path):
+    rng = np.random.default_rng(10)
+    _, sample = identity(rng)
+    answers = iter([{"actions": [{"do": "learn_my_name", "name": "Farhan"}], "reply": "Hi Farhan."},
+                    {"actions": [{"do": "remember_fact", "subject": "me", "fact": "loves coffee"}],
+                     "reply": "Coffee, got it."}])
+    m, said = make_mind(tmp_path, FakeLLM(lambda _: next(answers)), face_engine=FakeFaces())
+    for x in sample(0, 4):
+        m.see(Frame(faces=[(FACE_BOX, x)], things=[]))
+    m.hear("I'm Farhan")
+    settle(m, lambda: len(said) >= 1)
+    m.hear("I love coffee")
+    settle(m, lambda: len(said) >= 2)
+    assert ("Farhan", "", "loves coffee") in m.senses()["facts"]
+
+
+def test_names_it_stores_must_have_been_said():
+    from the_machine.cortex.cortex import parse
+    raw = json.dumps({"actions": [{"do": "learn_my_name", "name": "I am you"},
+                                  {"do": "learn_object", "name": "cup"}], "reply": "Hm."})
+    assert parse(raw, "do you know who I am?").actions == []
+    assert [a.name for a in parse(raw, "this is a cup").actions] == ["learn_object"]
+
+
+def test_reply_streams_sentence_by_sentence():
+    from the_machine.cortex.cortex import ReplyStream
+    raw = json.dumps({"actions": [{"do": "go_to_sleep"}],
+                      "reply": "Okay. I'll rest now! Say \"hi\" when\nyou're back?"})
+    heads, sentences = [], []
+    s = ReplyStream(heads.append, sentences.append)
+    for ch in raw:
+        s.feed(ch)
+        if sentences:
+            assert heads                          # actions always come before speech
+    s.finish()
+    assert json.loads(heads[0].rstrip().rstrip(",") + "}")["actions"][0]["do"] == "go_to_sleep"
+    assert sentences == ["Okay.", "I'll rest now!", 'Say "hi" when you\'re back?']

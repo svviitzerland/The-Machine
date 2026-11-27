@@ -11,13 +11,13 @@ import cv2
 from . import config as C
 from .core.mind import Mind
 from .hud import Hud
-from .language.llm import load_cortex
-from .language.persona import load_persona
-from .language.voice import Voice
+from .cortex.llm import load_cortex
 from .memory.store import Store
 from .perception import models
 from .perception.audio import make_ears
-from .perception.vision import Camera, FaceEngine, ObjectEncoder
+from .perception.vision import Camera, FaceEngine, load_object_engine
+from .voice import Voice
+
 
 def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = False) -> None:
     paths = models.ensure(cfg.models_dir)
@@ -36,11 +36,15 @@ def run(cfg: C.Config, use_mic: bool = True, show: bool = True, silent: bool = F
         if hasattr(ears, "muted"):
             ears.muted.clear()
 
-    voice = Voice(load_persona(cfg.mind.persona), cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent,
-                  on_start=started, on_end=ended)
+    voice = Voice(cfg.speech.voice, cfg.speech.tts_model, cfg.speech.tts_quant, silent=silent,
+                  on_start=started, on_end=ended, language=cfg.speech.language, name=cfg.name)
+    cortex = load_cortex(cfg)
+    if cortex is None:
+        print("[machine] no cortex model in models/, so it can see and remember but not talk. "
+              "Run: python -m the_machine download", file=sys.stderr)
     mind = Mind(cfg, store, voice.say, FaceEngine(str(paths["yunet"]), str(paths["sface"]), cfg.vision),
-                ObjectEncoder(), cortex=load_cortex(cfg))
-    ears = make_ears(cfg.speech, inbox.put, mind.lang.asr_code, prefer_mic=use_mic)
+                load_object_engine(cfg), cortex=cortex)
+    ears = make_ears(cfg.speech, inbox.put, cfg.speech.language, prefer_mic=use_mic)
     cam = Camera(cfg.vision)
     hud = Hud()
     print(f"[machine] awake. voice={voice.backend}. Type or speak. Ctrl+C to stop.", file=sys.stderr)

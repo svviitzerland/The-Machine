@@ -3,17 +3,22 @@ cross-situational statistics over everything heard while concepts are in view (Y
 """
 from __future__ import annotations
 
+import re
 import time
-from typing import Callable
 
 from ..config import MemoryConfig
 from .store import Store
 
 
 class Lexicon:
-    def __init__(self, store: Store, cfg: MemoryConfig, content_words: Callable[[str], list[str]]):
-        # Tokenising comes from the language pack; the word table itself is language-agnostic.
-        self.store, self.cfg, self.content_words = store, cfg, content_words
+    def __init__(self, store: Store, cfg: MemoryConfig):
+        self.store, self.cfg = store, cfg
+
+    @staticmethod
+    def content_words(text: str) -> list[str]:
+        # Short words carry little meaning in any language; cross-situational
+        # statistics take care of the common long ones.
+        return re.findall(r"[^\W\d_]{3,}", text.lower())
 
     def _add(self, word: str, cid: int, w: float) -> None:
         self.store.x(

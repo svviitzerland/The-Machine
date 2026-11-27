@@ -20,7 +20,6 @@ from pathlib import Path
 import numpy as np
 
 from the_machine.config import Config
-from the_machine.language.pack import load_pack
 from the_machine.memory.consolidation import Consolidator
 from the_machine.memory.lexicon import Lexicon
 from the_machine.memory.semantic import PrototypeMemory, l2n
@@ -29,7 +28,6 @@ from the_machine.memory.store import Store
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "results"
 BASE = Config().memory
-EN = load_pack("en")
 
 
 def auroc(pos, neg):
@@ -62,7 +60,7 @@ class GPMLearner:
         self.cfg, self.name, self.use_sleep = cfg, name, sleep
         self.store = Store(":memory:")
         self.mem = PrototypeMemory(self.store, cfg, "face")
-        self.cons = Consolidator(self.store, cfg, self.mem, Lexicon(self.store, cfg, EN.content_words))
+        self.cons = Consolidator(self.store, cfg, self.mem, Lexicon(self.store, cfg))
         self.cid, self.lab = {}, {}
 
     def concept(self, label):
